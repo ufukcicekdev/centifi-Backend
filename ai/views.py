@@ -48,7 +48,8 @@ def _get_gemini_client():
 
 
 def _gemini_model_id() -> str:
-    return (os.getenv("GEMINI_MODEL") or "gemini-2.0-flash").strip()
+    # gemini-2.0-flash yeni anahtarlarda API'de 404 (Google: "no longer available to new users")
+    return (os.getenv("GEMINI_MODEL") or "gemini-2.5-flash").strip()
 
 
 def _extract_generate_content_text(resp) -> str:
