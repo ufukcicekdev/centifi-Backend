@@ -137,8 +137,9 @@ STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
+# Manifest sürümü build/runtime uyuşmazsa worker açılışında sorun çıkarabiliyor; prod’da sıkıştırılmış statik yeterli.
 _WHITENOISE_STATICFILES = {
-    "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    "BACKEND": "whitenoise.storage.CompressedStaticFilesStorage",
 }
 
 CSRF_TRUSTED_ORIGINS = [
@@ -149,6 +150,7 @@ CSRF_TRUSTED_ORIGINS = [
 
 if not DEBUG:
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    USE_X_FORWARDED_HOST = True
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
 

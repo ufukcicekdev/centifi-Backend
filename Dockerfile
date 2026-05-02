@@ -27,5 +27,7 @@ RUN SECRET_KEY=build-collectstatic-only \
 ENV PORT=8000
 EXPOSE 8000
 
-SHELL ["/bin/sh", "-c"]
-CMD exec gunicorn core.wsgi:application --bind 0.0.0.0:${PORT} --workers 2 --threads 2 --timeout 120 --graceful-timeout 60
+COPY scripts/docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
+
+ENTRYPOINT ["/docker-entrypoint.sh"]

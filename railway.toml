@@ -5,7 +5,7 @@ builder = "dockerfile"
 dockerfilePath = "Dockerfile"
 
 [deploy]
-# CMD Dockerfile içinde; burada tekrar yazmıyoruz (çift kaynak olmasın).
+# Başlatma: Dockerfile → ENTRYPOINT [/docker-entrypoint.sh]. Railway UI’da Custom Start Command BOŞ olsun (doluysa CMD’yi ezer).
 # Railway şeması: dizide en fazla 1 eleman.
 preDeployCommand = ["sh -c \"python manage.py migrate --noinput\""]
 healthcheckPath = "/health"
