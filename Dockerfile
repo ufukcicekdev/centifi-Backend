@@ -15,6 +15,10 @@ RUN apt-get update \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Entrypoint önce (scripts/ repo’da olmalı — commit edin).
+COPY scripts/docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
+
 COPY . .
 
 # collectstatic: yalnızca build katmanı için sahte anahtar (gerçek SECRET_KEY yok).
@@ -26,8 +30,5 @@ RUN SECRET_KEY=build-collectstatic-only \
 
 ENV PORT=8000
 EXPOSE 8000
-
-COPY scripts/docker-entrypoint.sh /docker-entrypoint.sh
-RUN chmod +x /docker-entrypoint.sh
 
 ENTRYPOINT ["/docker-entrypoint.sh"]
