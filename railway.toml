@@ -5,8 +5,9 @@ builder = "nixpacks"
 buildCommand = "pip install -r requirements.txt && python manage.py collectstatic --noinput"
 
 [deploy]
-startCommand = "gunicorn core.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --threads 2 --timeout 120"
-preDeployCommand = ["python manage.py migrate --noinput"]
-healthcheckPath = "/health/"
-healthcheckTimeout = 100
+# Shell ile çalıştır: $PORT genişlemesi olmazsa gunicorn dinlemez → healthcheck “unavailable”.
+startCommand = "sh -c 'exec gunicorn core.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --threads 2 --timeout 120 --graceful-timeout 60'"
+preDeployCommand = ["python", "manage.py", "migrate", "--noinput"]
+healthcheckPath = "/health"
+healthcheckTimeout = 300
 restartPolicyType = "on_failure"

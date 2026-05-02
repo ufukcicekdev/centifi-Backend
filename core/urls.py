@@ -4,6 +4,7 @@ from django.urls import path, include
 from core.views import health
 
 urlpatterns = [
+    path("health", health),
     path("health/", health, name="health"),
     path("admin/", admin.site.urls),
     path("api/users/", include("users.urls")),
