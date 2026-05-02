@@ -131,22 +131,104 @@ def _sanitize_expense_item(item: dict) -> dict:
     return {"amount": amount, "description": desc, "category": cat, "date": dt, "currency": cur}
 
 
-def _finalize_expenses_batch(coerced: dict, fallback_text: str, receipt_url: str | None = None) -> dict:
+def _merge_receipt_lines_by_category(items: list[dict]) -> list[dict]:
+    """
+    Fişte aynı kategorideki satırları (yemek, ulaşım, …) tek harcamada toplar.
+    Metin/ses çoklu niyet (farklı kategoriler) ayrı kalır; sadece aynı (cat,date,currency) gruplanır.
+    """
+    if len(items) <= 1:
+        return items
+
+    # (category, date, currency) -> list of items
+    buckets: dict[tuple[str, str, str], list[dict]] = {}
+    for it in items:
+        key = (it["category"], it["date"], it["currency"])
+        buckets.setdefault(key, []).append(it)
+
+    merged: list[dict] = []
+    for key, group in buckets.items():
+        if len(group) == 1:
+            merged.append(group[0])
+            continue
+        total = round(sum(float(x["amount"]) for x in group), 2)
+        # Açıklamalar: kısa benzersiz parçalar
+        parts: list[str] = []
+        seen: set[str] = set()
+        for x in group:
+            d = (x.get("description") or "").strip()
+            if d and d not in seen:
+                seen.add(d)
+                parts.append(d[:120])
+        if len(parts) <= 4:
+            desc = " · ".join(parts)[:500]
+        else:
+            head = " · ".join(parts[:3])
+            desc = f"{head} (+{len(parts) - 3} kalem)"[:500]
+        cat, dt, cur = key
+        merged.append(
+            {
+                "amount": total,
+                "description": desc or group[0]["description"],
+                "category": cat,
+                "date": dt,
+                "currency": cur,
+            }
+        )
+
+    # Orijinal fiş sırasına yakın: kategori sabit sırayla
+    cat_order = [
+        "food",
+        "transport",
+        "shopping",
+        "health",
+        "entertainment",
+        "utilities",
+        "other",
+    ]
+    rank = {c: i for i, c in enumerate(cat_order)}
+
+    def sort_key(row: dict) -> tuple[int, str]:
+        return (rank.get(row["category"], 99), row["date"])
+
+    merged.sort(key=sort_key)
+    return merged
+
+
+def _finalize_expenses_batch(
+    coerced: dict,
+    fallback_text: str,
+    receipt_url: str | None = None,
+    *,
+    merge_receipt_by_category: bool = False,
+) -> dict:
     raw_list = list(coerced.get("expenses") or [])
     sanitized = [_sanitize_expense_item(x) for x in raw_list if isinstance(x, dict)]
     if not sanitized:
         sanitized = [_sanitize_expense_item(_fallback_parse(fallback_text))]
+    if merge_receipt_by_category:
+        sanitized = _merge_receipt_lines_by_category(sanitized)
     out: dict = {"expenses": sanitized}
     if receipt_url:
         out["receipt_url"] = receipt_url
     return out
 
 
-def _build_batch_response(parsed_any, fallback_text: str, receipt_url: str | None = None) -> dict:
+def _build_batch_response(
+    parsed_any,
+    fallback_text: str,
+    receipt_url: str | None = None,
+    *,
+    merge_receipt_by_category: bool = False,
+) -> dict:
     coerced = _coerce_root_to_expenses_payload(parsed_any)
     if not coerced:
         coerced = {"expenses": [_fallback_parse(fallback_text)]}
-    return _finalize_expenses_batch(coerced, fallback_text=fallback_text, receipt_url=receipt_url)
+    return _finalize_expenses_batch(
+        coerced,
+        fallback_text=fallback_text,
+        receipt_url=receipt_url,
+        merge_receipt_by_category=merge_receipt_by_category,
+    )
 
 
 def _fallback_parse(text: str) -> dict:
@@ -300,9 +382,15 @@ class ParseImageView(APIView):
         parsed_any = _gemini_parse_media(
             image_b64,
             mime_type,
-            "This is a receipt or expense document. Extract every distinct expense or line item.",
+            "This is a receipt or expense document. Extract each printed line with amount and category; "
+            "the server will merge lines that share the same category into one total per category.",
         )
-        data = _build_batch_response(parsed_any, fallback_text="", receipt_url=receipt_url)
+        data = _build_batch_response(
+            parsed_any,
+            fallback_text="",
+            receipt_url=receipt_url,
+            merge_receipt_by_category=True,
+        )
         return Response(data)
 
 
