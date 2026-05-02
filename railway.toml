@@ -1,12 +1,11 @@
-# Railway: set the service "Root Directory" to `backend` when deploying from monorepo,
-# or configure this file path explicitly in Service → Settings → Config as Code.
+# Railway: Root Directory = `backend`. Nixpacks, sırları ARG/ENV ile gömüp Docker lint uyarısı üretiyordu;
+# bu yüzden sırasız Dockerfile kullanılıyor (sırlar yalnızca çalışma zamanı Variables).
 [build]
-builder = "nixpacks"
-buildCommand = "pip install -r requirements.txt && python manage.py collectstatic --noinput"
+builder = "dockerfile"
+dockerfilePath = "Dockerfile"
 
 [deploy]
-# Dikkat: sh -c '...$PORT...' yanlış — tek tırnakta $PORT genişlemez → gunicorn dinlemez → health unavailable.
-startCommand = "sh -c \"exec gunicorn core.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --threads 2 --timeout 120 --graceful-timeout 60\""
+# CMD Dockerfile içinde; burada tekrar yazmıyoruz (çift kaynak olmasın).
 # Railway şeması: dizide en fazla 1 eleman.
 preDeployCommand = ["sh -c \"python manage.py migrate --noinput\""]
 healthcheckPath = "/health"
