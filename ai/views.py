@@ -8,7 +8,7 @@ from datetime import date
 
 import boto3
 from botocore.client import Config
-from rest_framework import permissions
+from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -224,5 +224,13 @@ class ParseAudioView(APIView):
             "Detect the currency from context (₺/TL → TRY, $ → USD, € → EUR, £ → GBP). "
             "If no currency mentioned, use the user's likely local currency based on language. "
         )
-        data = _gemini_parse_media(audio_b64, mime_type, prompt) or _fallback_parse("")
+        data = _gemini_parse_media(audio_b64, mime_type, prompt)
+        if not data:
+            # Boş `_fallback_parse` sahte bir fiş (~5.5 USD “Expense”) üretir — ses için yanıltıcı.
+            detail = (
+                "Audio parse failed or Gemini is not configured "
+                "(set GEMINI_API_KEY on the server and try again)."
+            )
+            return Response({"detail": detail}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
         return Response(data)
