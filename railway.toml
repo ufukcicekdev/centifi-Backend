@@ -9,5 +9,5 @@ dockerfilePath = "Dockerfile"
 # Railway şeması: dizide en fazla 1 eleman.
 preDeployCommand = ["sh -c \"python manage.py migrate --noinput\""]
 healthcheckPath = "/health"
-healthcheckTimeout = 300
+healthcheckTimeout = 600
 restartPolicyType = "on_failure"

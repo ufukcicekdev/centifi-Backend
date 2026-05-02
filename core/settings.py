@@ -15,6 +15,11 @@ ALLOWED_HOSTS = [
     for h in os.getenv("ALLOWED_HOSTS", "*").split(",")
     if h.strip()
 ]
+# Container içi / bazı probe'lar 127.0.0.1 Host kullanır; * değilse ekle.
+if "*" not in ALLOWED_HOSTS:
+    for _h in ("127.0.0.1", "localhost", "[::1]"):
+        if _h not in ALLOWED_HOSTS:
+            ALLOWED_HOSTS.append(_h)
 
 INSTALLED_APPS = [
     "storages",
@@ -35,6 +40,7 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    "core.middleware.HealthCheckMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
