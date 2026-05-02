@@ -161,7 +161,7 @@ if not DEBUG:
     CSRF_COOKIE_SECURE = True
 
 # ── AI ────────────────────────────────────────────────────────────────────────
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+GEMINI_API_KEY = (os.getenv("GEMINI_API_KEY") or "").strip()
 
 # ── DigitalOcean Spaces (S3-compatible) ───────────────────────────────────────
 AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID", "")

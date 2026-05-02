@@ -1,3 +1,4 @@
+import logging
 import os
 import io
 import json
@@ -13,6 +14,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .serializers import ParseTextSerializer, ParseImageSerializer
+
+logger = logging.getLogger(__name__)
 
 EXPENSE_SCHEMA = {
     "type": "object",
@@ -31,14 +34,42 @@ EXPENSE_SCHEMA = {
 
 
 def _get_gemini_client():
-    api_key = os.getenv("GEMINI_API_KEY")
+    # Railway/console bazen başta/sonda boşluk veya yanlış tırnak bırakabiliyor
+    api_key = (os.getenv("GEMINI_API_KEY") or "").strip().strip('"').strip("'")
     if not api_key:
+        logger.warning("GEMINI_API_KEY missing or empty in process env")
         return None
     try:
         from google import genai
         return genai.Client(api_key=api_key)
     except Exception:
+        logger.exception("google-genai client failed to initialize (wrong package version or bad key format?)")
         return None
+
+
+def _gemini_model_id() -> str:
+    return (os.getenv("GEMINI_MODEL") or "gemini-2.0-flash").strip()
+
+
+def _extract_generate_content_text(resp) -> str:
+    """google-genai sürümleri / güvenlik filtreleri bazen `resp.text` boş bırakır; candidates üzerinden dene."""
+    if resp is None:
+        return ""
+    t = getattr(resp, "text", None)
+    if isinstance(t, str) and t.strip():
+        return t
+    try:
+        for c in getattr(resp, "candidates", None) or []:
+            content = getattr(c, "content", None)
+            if content is None:
+                continue
+            for part in getattr(content, "parts", None) or []:
+                pt = getattr(part, "text", None)
+                if isinstance(pt, str) and pt.strip():
+                    return pt
+    except Exception:
+        logger.exception("_extract_generate_content_text: unexpected response shape")
+    return ""
 
 
 def _parse_gemini_response(text: str) -> dict | None:
@@ -122,17 +153,23 @@ def _gemini_parse_text(text: str, language: str = "en") -> dict | None:
         f"Schema: {json.dumps(EXPENSE_SCHEMA)}"
     )
     try:
-        resp = _get_gemini_client().models.generate_content(
-            model="gemini-2.0-flash",
+        resp = client.models.generate_content(
+            model=_gemini_model_id(),
             contents=prompt,
         )
-        return _parse_gemini_response(resp.text)
+        raw = _extract_generate_content_text(resp)
+        if not raw.strip():
+            logger.warning("Gemini returned empty text for parse-text request")
+            return None
+        return _parse_gemini_response(raw)
     except Exception:
+        logger.exception("gemini_parse_text failed model=%s", _gemini_model_id())
         return None
 
 
-def _gemini_parse_media(data_b64: str, mime_type: str, prompt_text: str) -> dict | None:
-    client = _get_gemini_client()
+def _gemini_parse_media(data_b64: str, mime_type: str, prompt_text: str, client=None):
+    if client is None:
+        client = _get_gemini_client()
     if not client:
         return None
     try:
@@ -146,11 +183,16 @@ def _gemini_parse_media(data_b64: str, mime_type: str, prompt_text: str) -> dict
         )
         part = types.Part.from_bytes(data=base64.b64decode(data_b64), mime_type=mime_type)
         resp = client.models.generate_content(
-            model="gemini-2.0-flash",
+            model=_gemini_model_id(),
             contents=[prompt, part],
         )
-        return _parse_gemini_response(resp.text)
+        raw = _extract_generate_content_text(resp)
+        if not raw.strip():
+            logger.warning("Gemini returned empty text for media mime_type=%s", mime_type)
+            return None
+        return _parse_gemini_response(raw)
     except Exception:
+        logger.exception("gemini_parse_media failed model=%s mime=%s", _gemini_model_id(), mime_type)
         return None
 
 
@@ -224,13 +266,28 @@ class ParseAudioView(APIView):
             "Detect the currency from context (₺/TL → TRY, $ → USD, € → EUR, £ → GBP). "
             "If no currency mentioned, use the user's likely local currency based on language. "
         )
-        data = _gemini_parse_media(audio_b64, mime_type, prompt)
-        if not data:
-            # Boş `_fallback_parse` sahte bir fiş (~5.5 USD “Expense”) üretir — ses için yanıltıcı.
-            detail = (
-                "Audio parse failed or Gemini is not configured "
-                "(set GEMINI_API_KEY on the server and try again)."
+        gemini_client = _get_gemini_client()
+        if not gemini_client:
+            return Response(
+                {
+                    "detail": "Gemini kullanılamıyor (/sunucuda GEMINI_API_KEY boş veya google-genai paketi hatalı).",
+                    "code": "GEMINI_CLIENT_UNAVAILABLE",
+                },
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
-            return Response({"detail": detail}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+        data = _gemini_parse_media(audio_b64, mime_type, prompt, client=gemini_client)
+        if not data:
+            return Response(
+                {
+                    "detail": (
+                        "Ses Gemini tarafından JSON’a çevrilemedi veya boş yanıt geldi. "
+                        "Railway’de GEMINI_MODEL deneyin: gemini-2.5-flash veya gemini-2.5-flash-lite-latest; "
+                        "deploy loglarına bakın (ai.views)."
+                    ),
+                    "code": "GEMINI_AUDIO_PARSE_FAILED",
+                },
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
 
         return Response(data)
