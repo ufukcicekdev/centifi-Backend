@@ -185,6 +185,10 @@ EMAIL_USE_SSL = os.getenv("EMAIL_USE_SSL", "False") == "True"
 # Markalı e-postalar: site linki (footer). Logo ``core/email_assets/centifi-logo-email.png`` (inline CID).
 EMAIL_APP_URL = _strip_env(os.getenv("EMAIL_APP_URL")) or "https://centifi.app"
 
+# Şifre sıfırlama e-postasındaki link (uid/token sorgu parametreleri eklenir).
+# Varsayılan: Expo ``scheme`` (``centifi``) — üretimde web yönlendirmesi için https://…/reset-password de verilebilir.
+PASSWORD_RESET_PUBLIC_URL = _strip_env(os.getenv("PASSWORD_RESET_PUBLIC_URL")) or "centifi://reset-password"
+
 if SMTP2GO_API_KEY and SMTP2GO_FROM_EMAIL:
     EMAIL_BACKEND = "core.mail_smtp2go.Smtp2goApiEmailBackend"
     DEFAULT_FROM_EMAIL = SMTP2GO_FROM_EMAIL

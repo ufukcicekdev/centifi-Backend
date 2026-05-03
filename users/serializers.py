@@ -19,8 +19,27 @@ class RegisterSerializer(serializers.ModelSerializer):
         return user
 
 
+class ForgotPasswordSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+
+class ResetPasswordSerializer(serializers.Serializer):
+    uid = serializers.CharField()
+    token = serializers.CharField()
+    new_password = serializers.CharField(min_length=6, write_only=True)
+
+
+class ChangePasswordSerializer(serializers.Serializer):
+    old_password = serializers.CharField(required=False, default="", allow_blank=True, write_only=True)
+    new_password = serializers.CharField(min_length=6, write_only=True)
+
+
 class UserSerializer(serializers.ModelSerializer):
     is_pro = serializers.SerializerMethodField()
+    has_password = serializers.SerializerMethodField()
+
+    def get_has_password(self, obj: User) -> bool:
+        return obj.has_usable_password()
 
     def get_is_pro(self, obj: User) -> bool:
         exp = obj.pro_entitlement_expires_at
@@ -62,9 +81,9 @@ class UserSerializer(serializers.ModelSerializer):
             "monthly_budget", "language", "display_currency", "is_dark_mode", "notifications_enabled",
             "alert_email", "onboarding_completed",
             "category_budgets", "budget_alerts_enabled", "budget_alert_threshold_percent",
-            "pro_entitlement_expires_at", "is_pro",
+            "pro_entitlement_expires_at", "is_pro", "has_password",
         ]
-        read_only_fields = ["id", "pro_entitlement_expires_at", "is_pro"]
+        read_only_fields = ["id", "pro_entitlement_expires_at", "is_pro", "has_password"]
 
     def update(self, instance, validated_data):
         email = validated_data.get("email")
