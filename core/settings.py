@@ -57,7 +57,7 @@ ROOT_URLCONF = "core.urls"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [],
+        "DIRS": [BASE_DIR / "email_templates"],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
@@ -165,18 +165,35 @@ REVENUECAT_ENTITLEMENT_ID = (os.getenv("REVENUECAT_ENTITLEMENT_ID") or "pro").st
 REVENUECAT_WEBHOOK_SECRET = (os.getenv("REVENUECAT_WEBHOOK_SECRET") or "").strip()
 REVENUECAT_SECRET_API_KEY = (os.getenv("REVENUECAT_SECRET_API_KEY") or "").strip()
 
-# ── Email (SMTP2GO / SMTP) — rapor: HTML tablo + CSV ek ───────────────────────
-EMAIL_BACKEND = os.getenv(
-    "EMAIL_BACKEND",
-    "django.core.mail.backends.console.EmailBackend",
-)
+# ── Email — rapor: HTML tablo + CSV ek ────────────────────────────────────────
+# Öncelik: SMTP2GO REST API (`SMTP2GO_API_KEY` + `SMTP2GO_FROM_EMAIL`). Yoksa SMTP / konsol.
+def _strip_env(s: str | None) -> str:
+    return (s or "").strip().strip('"').strip("'")
+
+
+SMTP2GO_API_KEY = _strip_env(os.getenv("SMTP2GO_API_KEY"))
+SMTP2GO_FROM_EMAIL = _strip_env(os.getenv("SMTP2GO_FROM_EMAIL"))
+SMTP2GO_API_URL = _strip_env(os.getenv("SMTP2GO_API_URL")) or "https://api.smtp2go.com/v3/email/send"
+
 EMAIL_HOST = (os.getenv("EMAIL_HOST") or "").strip()
 EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
 EMAIL_HOST_USER = (os.getenv("EMAIL_HOST_USER") or "").strip()
 EMAIL_HOST_PASSWORD = (os.getenv("EMAIL_HOST_PASSWORD") or "").strip()
 EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "True") == "True"
 EMAIL_USE_SSL = os.getenv("EMAIL_USE_SSL", "False") == "True"
-DEFAULT_FROM_EMAIL = (os.getenv("DEFAULT_FROM_EMAIL") or "webmaster@localhost").strip()
+
+# Markalı e-postalar: site linki (footer). Logo ``core/email_assets/centifi-logo-email.png`` (inline CID).
+EMAIL_APP_URL = _strip_env(os.getenv("EMAIL_APP_URL")) or "https://centifi.app"
+
+if SMTP2GO_API_KEY and SMTP2GO_FROM_EMAIL:
+    EMAIL_BACKEND = "core.mail_smtp2go.Smtp2goApiEmailBackend"
+    DEFAULT_FROM_EMAIL = SMTP2GO_FROM_EMAIL
+else:
+    EMAIL_BACKEND = os.getenv(
+        "EMAIL_BACKEND",
+        "django.core.mail.backends.console.EmailBackend",
+    )
+    DEFAULT_FROM_EMAIL = (os.getenv("DEFAULT_FROM_EMAIL") or "webmaster@localhost").strip()
 
 # ── AI ────────────────────────────────────────────────────────────────────────
 GEMINI_API_KEY = (os.getenv("GEMINI_API_KEY") or "").strip()

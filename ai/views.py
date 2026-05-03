@@ -13,7 +13,7 @@ from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .serializers import ParseTextSerializer, ParseImageSerializer
+from .serializers import ParseTextSerializer, ParseImageSerializer, SpendingInsightsSerializer
 
 logger = logging.getLogger(__name__)
 
@@ -466,3 +466,204 @@ class ParseAudioView(APIView):
             expense_date_today=True,
         )
         return Response(data)
+
+
+def _empty_insight_markdown(language: str) -> str:
+    """Gemini çağırmadan dönemde veri yok mesajı (kullanıcı diline yakın)."""
+    lang = (language or "en").split("-")[0].lower()[:5]
+    lines = {
+        "tr": (
+            "## Bu aralıkta veri yok\n"
+            "- Seçtiğiniz tarihlerde ve listede kayıtlı harcama bulunamadı.\n"
+            "- Tarih aralığını genişletmeyi veya **Tüm listeler** seçeneğini deneyin."
+        ),
+        "de": (
+            "## Keine Ausgaben\n"
+            "- In diesem Zeitraum/Liste gibt es keine Ausgaben.\n"
+            "- Zeitraum vergrößern oder **Alle Listen** wählen."
+        ),
+        "fr": (
+            "## Aucune dépense\n"
+            "- Aucune dépense pour cette période ou cette liste.\n"
+            "- Élargissez les dates ou choisissez **Toutes les listes**."
+        ),
+        "es": (
+            "## Sin gastos\n"
+            "- No hay gastos en este periodo o lista.\n"
+            "- Amplía fechas o elige **Todas las listas**."
+        ),
+    }
+    return lines.get(
+        lang,
+        "## No spending in this range\n"
+        "- There are no expenses for the dates and list you picked.\n"
+        "- Try a wider date range or **All lists**.",
+    )
+
+
+def _build_spending_summary_dict(qs) -> dict:
+    """QuerySet üzerinde özet JSON (Gemini prompt)."""
+    from django.db.models import Count, Sum
+
+    total = qs.count()
+    if total == 0:
+        return {"expense_rows_in_range": 0}
+
+    spend_qs = qs.filter(is_income=False)
+    spend_count = spend_qs.count()
+    income_qs = qs.filter(is_income=True)
+
+    by_cat_currency = []
+    for row in spend_qs.values("currency", "category").annotate(total=Sum("amount"), n=Count("id")):
+        by_cat_currency.append(
+            {
+                "currency": row["currency"],
+                "category": row["category"],
+                "total": float(row["total"]),
+                "count": row["n"],
+            }
+        )
+
+    income_by_currency = []
+    for row in income_qs.values("currency").annotate(total=Sum("amount")):
+        income_by_currency.append({"currency": row["currency"], "total": float(row["total"])})
+
+    samples = []
+    for row in spend_qs.order_by("-date", "-id").values(
+        "date", "amount", "currency", "category", "description"
+    )[:48]:
+        samples.append(
+            {
+                "date": row["date"].isoformat(),
+                "amount": float(row["amount"]),
+                "currency": row["currency"],
+                "category": row["category"],
+                "description": (row["description"] or "")[:80],
+            }
+        )
+
+    return {
+        "expense_rows_in_range": total,
+        "spending_transactions": spend_count,
+        "income_transactions": income_qs.count(),
+        "totals_by_currency_and_category": by_cat_currency,
+        "income_by_currency": income_by_currency,
+        "recent_spending_sample": samples,
+    }
+
+
+def _gemini_spending_insight(summary_json: str, language: str) -> str | None:
+    client = _get_gemini_client()
+    if not client:
+        return None
+    lang_name = LANGUAGE_NAMES.get((language or "en")[:5], "English")
+    prompt = (
+        "You are a concise personal finance coach.\n"
+        "You receive ONLY this JSON about the user's transactions in the chosen period "
+        "(spending rows have is_income false in the DB; the JSON separates spending vs income counts "
+        "and lists totals_by_currency_and_category for spending only).\n"
+        f"{summary_json}\n\n"
+        f"Write your answer in {lang_name} only.\n"
+        "Use short markdown: a single ## title line, then 4–8 bullet lines starting with '- '. "
+        "Highlight patterns, one or two realistic suggestions, and optional cautions. "
+        "Do not invent numbers; only use values from the JSON. "
+        "Do not output JSON or fenced code blocks; plain markdown text only.\n"
+    )
+    try:
+        resp = client.models.generate_content(
+            model=_gemini_model_id(),
+            contents=prompt,
+        )
+        raw = _extract_generate_content_text(resp)
+        return raw.strip() if raw else None
+    except Exception:
+        logger.exception("gemini spending insights failed model=%s", _gemini_model_id())
+        return None
+
+
+class SpendingInsightsView(APIView):
+    """Seçilen dönem + listedeki harcamaları Gemini ile özet tavsiyeye çevirir."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        from expenses.models import Expense, ExpenseList
+
+        ser = SpendingInsightsSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        start = ser.validated_data["start_date"]
+        end = ser.validated_data["end_date"]
+        list_id = ser.validated_data.get("list_id")
+        language = ser.validated_data.get("language") or "en"
+
+        if end < start:
+            return Response(
+                {"detail": "End date must be on or after the start date."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if (end - start).days > 366:
+            return Response(
+                {"detail": "Date range cannot exceed 366 days."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        qs = Expense.objects.filter(user=request.user, date__gte=start, date__lte=end)
+        if list_id is not None:
+            if not ExpenseList.objects.filter(pk=list_id, user=request.user).exists():
+                return Response(
+                    {"list_id": ["Invalid list for this user."]},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            qs = qs.filter(expense_list_id=list_id)
+
+        summary = _build_spending_summary_dict(qs)
+        count = int(summary.get("expense_rows_in_range") or 0)
+        if count == 0:
+            return Response(
+                {
+                    "insight": _empty_insight_markdown(language),
+                    "expense_count": 0,
+                    "summary": summary,
+                }
+            )
+
+        if summary.get("spending_transactions", 0) == 0 and summary.get("income_transactions", 0) > 0:
+            # Sadece gelir satırları
+            return Response(
+                {
+                    "insight": _empty_insight_markdown(language),
+                    "expense_count": count,
+                    "summary": summary,
+                }
+            )
+
+        summary_json = json.dumps(summary, ensure_ascii=False)
+        if len(summary_json) > 24000:
+            summary_json = summary_json[:24000] + "\n…(truncated)"
+
+        insight = _gemini_spending_insight(summary_json, language)
+        if insight is None:
+            client = _get_gemini_client()
+            if not client:
+                return Response(
+                    {
+                        "detail": "AI is not configured (GEMINI_API_KEY missing or client init failed).",
+                        "code": "GEMINI_CLIENT_UNAVAILABLE",
+                    },
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE,
+                )
+            return Response(
+                {
+                    "detail": "Could not generate insights. Try again later.",
+                    "code": "GEMINI_INSIGHTS_FAILED",
+                },
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        return Response(
+            {
+                "insight": insight,
+                "expense_count": count,
+                "summary": summary,
+            }
+        )

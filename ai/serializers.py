@@ -19,3 +19,12 @@ class ParseResultSerializer(serializers.Serializer):
     date = serializers.CharField()
     currency = serializers.CharField()
 
+
+class SpendingInsightsSerializer(serializers.Serializer):
+    """POST /api/ai/spending-insights/ — Gemini ile dönem + isteğe bağlı liste özeti."""
+
+    start_date = serializers.DateField()
+    end_date = serializers.DateField()
+    list_id = serializers.IntegerField(required=False, allow_null=True)
+    language = serializers.CharField(default="en", max_length=5)
+

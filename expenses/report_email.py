@@ -3,11 +3,13 @@
 import csv
 import io
 from datetime import date
-from html import escape
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.mail import EmailMultiAlternatives
+from django.template.loader import render_to_string
+
+from core.email_branding import attach_centifi_logo_inline_if_needed, wrap_branded_email_html
 
 from .models import Expense, ExpenseList
 
@@ -17,6 +19,8 @@ User = get_user_model()
 def _smtp_ready() -> bool:
     backend = (getattr(settings, "EMAIL_BACKEND", "") or "").lower()
     if "console" in backend or "locmem" in backend or "dummy" in backend:
+        return True
+    if getattr(settings, "SMTP2GO_API_KEY", "").strip() and getattr(settings, "SMTP2GO_FROM_EMAIL", "").strip():
         return True
     return bool(
         getattr(settings, "EMAIL_HOST", "").strip()
@@ -74,56 +78,17 @@ def _build_csv(rows: list[dict]) -> str:
     return buf.getvalue()
 
 
-def _build_html_table(rows: list[dict], start: date, end: date, list_label: str) -> str:
-    """Simple HTML table for mail clients; all cells escaped."""
-    period = f"{escape(start.isoformat())} – {escape(end.isoformat())}"
-    header_extra = f" · {escape(list_label)}" if list_label else ""
-
-    if not rows:
-        body = "<p>No expenses in this period.</p>"
-    else:
-        cells = []
-        for r in rows:
-            kind = "Income" if r["is_income"] else "Expense"
-            cells.append(
-                "<tr>"
-                f"<td style='padding:8px;border:1px solid #ddd;'>{escape(r['date'])}</td>"
-                f"<td style='padding:8px;border:1px solid #ddd;text-align:right;'>"
-                f"{escape(r['currency'])} {r['amount']:.2f}</td>"
-                f"<td style='padding:8px;border:1px solid #ddd;'>{escape(r['category'])}</td>"
-                f"<td style='padding:8px;border:1px solid #ddd;'>{escape(r['description'])}</td>"
-                f"<td style='padding:8px;border:1px solid #ddd;'>{escape(r['list'] or '—')}</td>"
-                f"<td style='padding:8px;border:1px solid #ddd;'>{escape(kind)}</td>"
-                "</tr>",
-            )
-        body = (
-            "<table style='border-collapse:collapse;width:100%;max-width:720px;"
-            "font-family:system-ui,-apple-system,sans-serif;font-size:14px;'>"
-            "<thead><tr>"
-            "<th style='padding:8px;border:1px solid #ccc;background:#f0f0f0;text-align:left;'>Date</th>"
-            "<th style='padding:8px;border:1px solid #ccc;background:#f0f0f0;text-align:right;'>Amount</th>"
-            "<th style='padding:8px;border:1px solid #ccc;background:#f0f0f0;text-align:left;'>Category</th>"
-            "<th style='padding:8px;border:1px solid #ccc;background:#f0f0f0;text-align:left;'>Description</th>"
-            "<th style='padding:8px;border:1px solid #ccc;background:#f0f0f0;text-align:left;'>List</th>"
-            "<th style='padding:8px;border:1px solid #ccc;background:#f0f0f0;text-align:left;'>Type</th>"
-            "</tr></thead><tbody>"
-            + "".join(cells)
-            + "</tbody></table>"
-        )
-
-    return f"""<!DOCTYPE html>
-<html><head><meta charset="utf-8"></head>
-<body style="margin:16px;background:#fafafa;color:#111;">
-  <p style="font-family:system-ui,-apple-system,sans-serif;font-size:15px;">
-    Hello,<br><br>
-    Here is your Centifi expense report for <strong>{period}</strong>{header_extra}.
-    A <strong>CSV</strong> file is attached if you want to import or archive the data.
-  </p>
-  {body}
-  <p style="font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:#666;margin-top:20px;">
-    — Centifi
-  </p>
-</body></html>"""
+def _render_report_inner_html(rows: list[dict], start: date, end: date, list_label: str) -> str:
+    """Intro + table from ``email_templates/reports/expense_report.html``."""
+    period = f"{start.isoformat()} – {end.isoformat()}"
+    return render_to_string(
+        "reports/expense_report.html",
+        {
+            "rows": rows,
+            "period": period,
+            "list_label": list_label,
+        },
+    )
 
 
 def send_expense_report_email(
@@ -142,8 +107,8 @@ def send_expense_report_email(
     if not _smtp_ready():
         raise ValueError(
             "Email delivery is not configured on the server. "
-            "Set EMAIL_HOST, EMAIL_HOST_USER, EMAIL_HOST_PASSWORD, DEFAULT_FROM_EMAIL "
-            "(e.g. SMTP2GO: mail.smtp2go.com, port 2525 or 587).",
+            "Set SMTP2GO_API_KEY and SMTP2GO_FROM_EMAIL (REST API), or "
+            "EMAIL_HOST, EMAIL_HOST_USER, EMAIL_HOST_PASSWORD, DEFAULT_FROM_EMAIL for SMTP.",
         )
 
     list_label = ""
@@ -156,11 +121,23 @@ def send_expense_report_email(
     rows = _rows(user, start, end, list_id)
     count = len(rows)
     csv_text = _build_csv(rows)
-    html_body = _build_html_table(rows, start, end, list_label)
 
     subject = f"Centifi expense report ({start.isoformat()} – {end.isoformat()})"
     if list_label:
         subject += f" — {list_label}"
+
+    inner_html = _render_report_inner_html(rows, start, end, list_label)
+    sub_parts = [f"{start.isoformat()} – {end.isoformat()}"]
+    if list_label:
+        sub_parts.append(list_label)
+    header_subtitle = "Expense report · " + " · ".join(sub_parts)
+    preheader = f"Centifi expense report: {count} row(s) in this period. CSV attached."
+    html_body = wrap_branded_email_html(
+        inner_html=inner_html,
+        document_title=subject,
+        header_subtitle=header_subtitle,
+        preheader=preheader,
+    )
 
     text_body = (
         f"Hello,\n\n"
@@ -180,6 +157,7 @@ def send_expense_report_email(
     )
     msg.attach_alternative(html_body, "text/html")
     msg.attach(filename, csv_text.encode("utf-8"), "text/csv; charset=utf-8")
+    attach_centifi_logo_inline_if_needed(msg)
     msg.send(fail_silently=False)
 
     return {"ok": True, "sent_to": user.email.strip(), "expense_count": count}
