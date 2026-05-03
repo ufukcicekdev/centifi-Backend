@@ -1,15 +1,19 @@
+import smtplib
+
 from django.db.models import Sum
 from django.utils import timezone
-from rest_framework import permissions, viewsets
+from rest_framework import permissions, status, viewsets
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from .models import Category, Expense, ExpenseList, UserCustomCategory
+from .report_email import send_expense_report_email
 from .serializers import (
     DashboardSerializer,
     ExpenseListSerializer,
     ExpenseSerializer,
+    ReportEmailSerializer,
     UserCustomCategorySerializer,
 )
 
@@ -89,3 +93,34 @@ class ExpenseViewSet(viewsets.ModelViewSet):
         }
         serializer = DashboardSerializer(data)
         return Response(serializer.data)
+
+    @action(detail=False, methods=["post"], url_path="send-report-email")
+    def send_report_email(self, request):
+        ser = ReportEmailSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        start = ser.validated_data["start_date"]
+        end = ser.validated_data["end_date"]
+        list_id = ser.validated_data.get("list_id")
+        try:
+            result = send_expense_report_email(
+                user=request.user,
+                start=start,
+                end=end,
+                list_id=list_id,
+            )
+        except ValueError as e:
+            return Response(
+                {"detail": str(e), "code": "report_email_failed"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except (smtplib.SMTPException, OSError) as e:
+            return Response(
+                {"detail": f"Mail server error: {e}", "code": "report_smtp_error"},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+        except Exception as e:
+            return Response(
+                {"detail": "Could not send email.", "code": "report_email_error", "reason": str(e)},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+        return Response(result, status=status.HTTP_200_OK)

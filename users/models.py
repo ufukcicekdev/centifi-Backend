@@ -19,6 +19,8 @@ class User(AbstractUser):
     # Social auth provider IDs
     google_id = models.CharField(max_length=255, blank=True, default="")
     apple_id = models.CharField(max_length=255, blank=True, default="")
+    # RevenueCat / mağaza aboneliği — ``pro`` entitlement bitişi (webhook veya /subscription/sync/)
+    pro_entitlement_expires_at = models.DateTimeField(null=True, blank=True)
 
     def __str__(self):
         return self.username

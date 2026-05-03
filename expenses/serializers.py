@@ -101,3 +101,24 @@ class DashboardSerializer(serializers.Serializer):
     remaining = serializers.DecimalField(max_digits=10, decimal_places=2)
     category_summary = MonthlySummarySerializer(many=True)
     recent_expenses = ExpenseSerializer(many=True)
+
+
+class ReportEmailSerializer(serializers.Serializer):
+    """POST /api/expenses/send-report-email/ — CSV attachment to the signed-in user's email."""
+
+    start_date = serializers.DateField()
+    end_date = serializers.DateField()
+    list_id = serializers.IntegerField(required=False, allow_null=True)
+
+    def validate(self, attrs):
+        start = attrs["start_date"]
+        end = attrs["end_date"]
+        if end < start:
+            raise serializers.ValidationError(
+                {"end_date": "End date must be on or after start date."},
+            )
+        if (end - start).days > 366:
+            raise serializers.ValidationError(
+                {"end_date": "Date range cannot exceed 366 days."},
+            )
+        return attrs

@@ -160,6 +160,24 @@ if not DEBUG:
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
 
+# ── RevenueCat (Play / App Store abonelik) ────────────────────────────────────
+REVENUECAT_ENTITLEMENT_ID = (os.getenv("REVENUECAT_ENTITLEMENT_ID") or "pro").strip()
+REVENUECAT_WEBHOOK_SECRET = (os.getenv("REVENUECAT_WEBHOOK_SECRET") or "").strip()
+REVENUECAT_SECRET_API_KEY = (os.getenv("REVENUECAT_SECRET_API_KEY") or "").strip()
+
+# ── Email (SMTP2GO / SMTP) — rapor: HTML tablo + CSV ek ───────────────────────
+EMAIL_BACKEND = os.getenv(
+    "EMAIL_BACKEND",
+    "django.core.mail.backends.console.EmailBackend",
+)
+EMAIL_HOST = (os.getenv("EMAIL_HOST") or "").strip()
+EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
+EMAIL_HOST_USER = (os.getenv("EMAIL_HOST_USER") or "").strip()
+EMAIL_HOST_PASSWORD = (os.getenv("EMAIL_HOST_PASSWORD") or "").strip()
+EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "True") == "True"
+EMAIL_USE_SSL = os.getenv("EMAIL_USE_SSL", "False") == "True"
+DEFAULT_FROM_EMAIL = (os.getenv("DEFAULT_FROM_EMAIL") or "webmaster@localhost").strip()
+
 # ── AI ────────────────────────────────────────────────────────────────────────
 GEMINI_API_KEY = (os.getenv("GEMINI_API_KEY") or "").strip()
 

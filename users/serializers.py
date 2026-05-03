@@ -1,4 +1,6 @@
+from django.utils import timezone
 from rest_framework import serializers
+
 from .models import User, UserBankApp
 
 
@@ -18,6 +20,14 @@ class RegisterSerializer(serializers.ModelSerializer):
 
 
 class UserSerializer(serializers.ModelSerializer):
+    is_pro = serializers.SerializerMethodField()
+
+    def get_is_pro(self, obj: User) -> bool:
+        exp = obj.pro_entitlement_expires_at
+        if exp is None:
+            return False
+        return exp > timezone.now()
+
     def validate_email(self, value):
         if value is None or (isinstance(value, str) and not value.strip()):
             raise serializers.ValidationError("This field may not be blank.")
@@ -52,8 +62,9 @@ class UserSerializer(serializers.ModelSerializer):
             "monthly_budget", "language", "display_currency", "is_dark_mode", "notifications_enabled",
             "alert_email", "onboarding_completed",
             "category_budgets", "budget_alerts_enabled", "budget_alert_threshold_percent",
+            "pro_entitlement_expires_at", "is_pro",
         ]
-        read_only_fields = ["id"]
+        read_only_fields = ["id", "pro_entitlement_expires_at", "is_pro"]
 
     def update(self, instance, validated_data):
         email = validated_data.get("email")
