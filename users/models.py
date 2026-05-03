@@ -39,6 +39,7 @@ class UserBankApp(models.Model):
         max_length=200,
         help_text="Android applicationId — used to filter notifications.",
     )
+    icon_url = models.URLField(max_length=500, blank=True, default="")
     enabled = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 

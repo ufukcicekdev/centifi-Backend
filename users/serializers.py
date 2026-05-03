@@ -79,7 +79,7 @@ class SocialAuthSerializer(serializers.Serializer):
 class UserBankAppSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserBankApp
-        fields = ["id", "name", "emoji", "store_url", "package_name", "enabled", "created_at"]
+        fields = ["id", "name", "emoji", "store_url", "package_name", "icon_url", "enabled", "created_at"]
         read_only_fields = ["id", "created_at"]
 
     def create(self, validated_data):

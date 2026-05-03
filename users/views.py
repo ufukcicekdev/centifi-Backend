@@ -3,6 +3,7 @@ import urllib.request
 
 from django.contrib.auth import authenticate
 from rest_framework import generics, permissions, serializers, status, viewsets
+from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -10,6 +11,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 from .models import User, UserBankApp
+from .play_store_lookup import fetch_play_store_meta, package_name_from_store_url
 from .serializers import RegisterSerializer, UserSerializer, SocialAuthSerializer, UserBankAppSerializer
 
 
@@ -62,6 +64,27 @@ class UserBankAppViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         return UserBankApp.objects.filter(user=self.request.user)
+
+    @action(detail=False, methods=["get"], url_path="play-store-lookup")
+    def play_store_lookup(self, request):
+        """GET ?package=com.foo or ?store_url=https://play.google.com/...id=com.foo"""
+        pkg = (request.query_params.get("package") or "").strip()
+        store_url = (request.query_params.get("store_url") or "").strip()
+        if not pkg and store_url:
+            pkg = package_name_from_store_url(store_url)
+        if not pkg:
+            return Response(
+                {"detail": "Provide package= or a Play Store store_url containing id=."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        name, icon_url = fetch_play_store_meta(pkg)
+        return Response(
+            {
+                "package_name": pkg,
+                "name": name,
+                "icon_url": icon_url,
+            }
+        )
 
 
 class SocialAuthView(APIView):
