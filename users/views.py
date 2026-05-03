@@ -2,15 +2,15 @@ import json
 import urllib.request
 
 from django.contrib.auth import authenticate
-from rest_framework import generics, permissions, serializers, status
+from rest_framework import generics, permissions, serializers, status, viewsets
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
-from .models import User
-from .serializers import RegisterSerializer, UserSerializer, SocialAuthSerializer
+from .models import User, UserBankApp
+from .serializers import RegisterSerializer, UserSerializer, SocialAuthSerializer, UserBankAppSerializer
 
 
 def _tokens_for_user(user: User) -> dict:
@@ -53,6 +53,15 @@ class ProfileView(generics.RetrieveUpdateAPIView):
 
     def get_object(self):
         return self.request.user
+
+
+class UserBankAppViewSet(viewsets.ModelViewSet):
+    serializer_class = UserBankAppSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    http_method_names = ["get", "post", "patch", "delete", "head", "options"]
+
+    def get_queryset(self):
+        return UserBankApp.objects.filter(user=self.request.user)
 
 
 class SocialAuthView(APIView):

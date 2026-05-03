@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import User
+from .models import User, UserBankApp
 
 
 class RegisterSerializer(serializers.ModelSerializer):
@@ -74,3 +74,14 @@ class SocialAuthSerializer(serializers.Serializer):
     token = serializers.CharField()           # Google: id_token  |  Apple: identity_token
     name = serializers.CharField(required=False, default="")
     email = serializers.EmailField(required=False, default="")
+
+
+class UserBankAppSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserBankApp
+        fields = ["id", "name", "emoji", "store_url", "package_name", "enabled", "created_at"]
+        read_only_fields = ["id", "created_at"]
+
+    def create(self, validated_data):
+        validated_data["user"] = self.context["request"].user
+        return super().create(validated_data)

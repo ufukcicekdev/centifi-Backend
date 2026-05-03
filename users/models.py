@@ -1,4 +1,5 @@
 from django.contrib.auth.models import AbstractUser
+from django.conf import settings
 from django.db import models
 
 
@@ -21,3 +22,34 @@ class User(AbstractUser):
 
     def __str__(self):
         return self.username
+
+
+class UserBankApp(models.Model):
+    """Bank / wallet apps the user added for notification-based expense hints (synced across devices)."""
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="bank_apps",
+    )
+    name = models.CharField(max_length=120)
+    emoji = models.CharField(max_length=16, default="🏦")
+    store_url = models.URLField(max_length=500)
+    package_name = models.CharField(
+        max_length=200,
+        help_text="Android applicationId — used to filter notifications.",
+    )
+    enabled = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "package_name"],
+                name="user_bank_app_unique_package_per_user",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.user_id} · {self.name}"

@@ -200,6 +200,7 @@ def _finalize_expenses_batch(
     receipt_url: str | None = None,
     *,
     merge_receipt_by_category: bool = False,
+    expense_date_today: bool = False,
 ) -> dict:
     raw_list = list(coerced.get("expenses") or [])
     sanitized = [_sanitize_expense_item(x) for x in raw_list if isinstance(x, dict)]
@@ -207,6 +208,10 @@ def _finalize_expenses_batch(
         sanitized = [_sanitize_expense_item(_fallback_parse(fallback_text))]
     if merge_receipt_by_category:
         sanitized = _merge_receipt_lines_by_category(sanitized)
+    if expense_date_today:
+        today_iso = date.today().isoformat()
+        for x in sanitized:
+            x["date"] = today_iso
     out: dict = {"expenses": sanitized}
     if receipt_url:
         out["receipt_url"] = receipt_url
@@ -219,6 +224,7 @@ def _build_batch_response(
     receipt_url: str | None = None,
     *,
     merge_receipt_by_category: bool = False,
+    expense_date_today: bool = False,
 ) -> dict:
     coerced = _coerce_root_to_expenses_payload(parsed_any)
     if not coerced:
@@ -228,6 +234,7 @@ def _build_batch_response(
         fallback_text=fallback_text,
         receipt_url=receipt_url,
         merge_receipt_by_category=merge_receipt_by_category,
+        expense_date_today=expense_date_today,
     )
 
 
@@ -390,6 +397,7 @@ class ParseImageView(APIView):
             fallback_text="",
             receipt_url=receipt_url,
             merge_receipt_by_category=True,
+            expense_date_today=True,
         )
         return Response(data)
 
@@ -451,5 +459,10 @@ class ParseAudioView(APIView):
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
 
-        data = _build_batch_response(parsed_any, fallback_text="", receipt_url=None)
+        data = _build_batch_response(
+            parsed_any,
+            fallback_text="",
+            receipt_url=None,
+            expense_date_today=True,
+        )
         return Response(data)
