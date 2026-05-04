@@ -68,6 +68,8 @@ class ExpenseSerializer(serializers.ModelSerializer):
         ret = super().to_representation(instance)
         ret["list_id"] = instance.expense_list_id
         ret["recurring_expense_id"] = instance.recurring_expense_id
+        rel = getattr(instance, "recurring_expense", None)
+        ret["recurrence_rule"] = rel.recurrence_rule if rel else None
         return ret
 
     def _resolve_expense_list(self, user, list_id):

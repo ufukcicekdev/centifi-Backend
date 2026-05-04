@@ -54,7 +54,10 @@ class ExpenseViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        qs = Expense.objects.filter(user=self.request.user)
+        qs = Expense.objects.filter(user=self.request.user).select_related(
+            "expense_list",
+            "recurring_expense",
+        )
         # Optional filters: ?month=2026-05  ?category=food
         month = self.request.query_params.get("month")
         category = self.request.query_params.get("category")
@@ -83,7 +86,11 @@ class ExpenseViewSet(viewsets.ModelViewSet):
             .order_by("-total")[:3]
         )
 
-        recent_expenses = Expense.objects.filter(user=request.user)[:5]
+        recent_expenses = (
+            Expense.objects.filter(user=request.user)
+            .select_related("expense_list", "recurring_expense")
+            .order_by("-date", "-created_at")[:5]
+        )
 
         data = {
             "total_spent": total_spent,
