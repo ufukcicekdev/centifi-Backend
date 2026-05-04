@@ -1,5 +1,8 @@
+from django.db import transaction
 from django.utils import timezone
 from rest_framework import serializers
+
+from expenses.models import Expense, RecurringExpense
 
 from .models import User, UserBankApp
 
@@ -100,7 +103,14 @@ class UserSerializer(serializers.ModelSerializer):
         for key in ("first_name", "last_name"):
             if key in validated_data and isinstance(validated_data[key], str):
                 validated_data[key] = validated_data[key].strip()
-        return super().update(instance, validated_data)
+        prev_display_currency = instance.display_currency
+        with transaction.atomic():
+            updated = super().update(instance, validated_data)
+            new_dc = updated.display_currency
+            if new_dc != prev_display_currency:
+                Expense.objects.filter(user=updated).update(currency=new_dc)
+                RecurringExpense.objects.filter(user=updated).update(currency=new_dc)
+        return updated
 
 
 class SocialAuthSerializer(serializers.Serializer):

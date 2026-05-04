@@ -6,7 +6,7 @@ from django.db import models
 class User(AbstractUser):
     monthly_budget = models.DecimalField(max_digits=10, decimal_places=2, default=2000.00)
     language = models.CharField(max_length=5, default="en")
-    # ISO 4217 — UI formatting / budget display (not expense transaction currency)
+    # ISO 4217 — tercih değişince harcama/tekrar satırlarının currency alanı da buna çekilir (kur dönüşümü yok).
     display_currency = models.CharField(max_length=3, default="USD")
     is_dark_mode = models.BooleanField(default=True)
     notifications_enabled = models.BooleanField(default=True)
