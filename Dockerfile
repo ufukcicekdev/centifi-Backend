@@ -28,7 +28,9 @@ RUN SECRET_KEY=build-collectstatic-only \
     ALLOWED_HOSTS=* \
     python manage.py collectstatic --noinput
 
-ENV PORT=8000
+ENV PORT=8000 \
+    CELERY_WORKER_POOL=solo \
+    CELERY_WORKER_CONCURRENCY=1
 EXPOSE 8000
 
 ENTRYPOINT ["/docker-entrypoint.sh"]

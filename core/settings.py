@@ -238,3 +238,9 @@ CELERY_BEAT_SCHEDULE = {
         "schedule": crontab(minute=10, hour=4),
     },
 }
+
+# Worker bellek: varsayılan prefork tüm CPU’larda child açar (kolayca 2–3 GB+).
+# docker-entrypoint varsayılanı `solo` tek süreç; yoğunluk için prefork + düşük concurrency kullanın.
+CELERY_WORKER_PREFETCH_MULTIPLIER = int(os.getenv("CELERY_WORKER_PREFETCH_MULTIPLIER", "1"))
+CELERY_WORKER_CONCURRENCY = int(os.getenv("CELERY_WORKER_CONCURRENCY", "1"))
+CELERY_WORKER_MAX_TASKS_PER_CHILD = int(os.getenv("CELERY_WORKER_MAX_TASKS_PER_CHILD", "50"))
