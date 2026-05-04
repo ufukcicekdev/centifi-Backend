@@ -11,6 +11,7 @@ urlpatterns = [
     path("api/users/", include("users.urls")),
     path("api/bank-apps/", include("users.bank_urls")),
     path("api/expenses/", include("expenses.urls")),
+    path("api/recurring-expenses/", include("expenses.recurring_urls")),
     path("api/expense-lists/", include("expenses.list_urls")),
     path("api/custom-categories/", include("expenses.category_urls")),
     path("api/ai/", include("ai.urls")),

@@ -37,6 +37,7 @@ INSTALLED_APPS = [
     "users",
     "expenses",
     "ai",
+    "django_celery_beat",
 ]
 
 MIDDLEWARE = [
@@ -220,3 +221,20 @@ else:
         "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
         "staticfiles": _WHITENOISE_STATICFILES,
     }
+
+# ── Celery (tekrarlayan masraf) ───────────────────────────────────────────────
+# Broker: Redis (CELERY_BROKER_URL veya REDIS_URL). Prod’da tek konteyner: docker-entrypoint.sh
+# RUN_CELERY_IN_WEB=1 ile worker + beat arka planda aynı serviste başlar (ayrı Celery servisi şart değil).
+# Yerelde sadece gunicorn: RUN_CELERY_IN_WEB boş. Redis yoksa: `python manage.py process_recurring` (cron).
+from celery.schedules import crontab
+
+CELERY_BROKER_URL = (os.getenv("CELERY_BROKER_URL") or os.getenv("REDIS_URL") or "redis://127.0.0.1:6379/0").strip()
+CELERY_RESULT_BACKEND = (os.getenv("CELERY_RESULT_BACKEND") or CELERY_BROKER_URL).strip()
+CELERY_TASK_ALWAYS_EAGER = os.getenv("CELERY_TASK_ALWAYS_EAGER", "False") == "True"
+CELERY_TIMEZONE = TIME_ZONE
+CELERY_BEAT_SCHEDULE = {
+    "process-recurring-expenses-daily": {
+        "task": "expenses.tasks.process_recurring_expenses",
+        "schedule": crontab(minute=10, hour=4),
+    },
+}

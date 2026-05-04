@@ -7,12 +7,13 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from .models import Category, Expense, ExpenseList, UserCustomCategory
+from .models import Category, Expense, ExpenseList, RecurringExpense, UserCustomCategory
 from .report_email import send_expense_report_email
 from .serializers import (
     DashboardSerializer,
     ExpenseListSerializer,
     ExpenseSerializer,
+    RecurringExpenseSerializer,
     ReportEmailSerializer,
     UserCustomCategorySerializer,
 )
@@ -124,3 +125,12 @@ class ExpenseViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_502_BAD_GATEWAY,
             )
         return Response(result, status=status.HTTP_200_OK)
+
+
+class RecurringExpenseViewSet(viewsets.ModelViewSet):
+    serializer_class = RecurringExpenseSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    http_method_names = ["get", "post", "patch", "delete", "head", "options"]
+
+    def get_queryset(self):
+        return RecurringExpense.objects.filter(user=self.request.user)

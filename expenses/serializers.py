@@ -1,6 +1,8 @@
+from django.utils import timezone
 from rest_framework import serializers
 
-from .models import Category, Expense, ExpenseList, UserCustomCategory
+from .models import Category, Expense, ExpenseList, RecurringExpense, UserCustomCategory
+from .recurring_service import compute_next_occurrence
 
 BUILTIN_CATEGORY_VALUES = frozenset(c.value for c in Category)
 
@@ -65,6 +67,7 @@ class ExpenseSerializer(serializers.ModelSerializer):
     def to_representation(self, instance):
         ret = super().to_representation(instance)
         ret["list_id"] = instance.expense_list_id
+        ret["recurring_expense_id"] = instance.recurring_expense_id
         return ret
 
     def _resolve_expense_list(self, user, list_id):
@@ -101,6 +104,97 @@ class DashboardSerializer(serializers.Serializer):
     remaining = serializers.DecimalField(max_digits=10, decimal_places=2)
     category_summary = MonthlySummarySerializer(many=True)
     recent_expenses = ExpenseSerializer(many=True)
+
+
+class RecurringExpenseSerializer(serializers.ModelSerializer):
+    """İlk `anchor_date` gelecekteyse Expense yok; vade gelince arka plan işler."""
+
+    list_id = serializers.IntegerField(required=False, allow_null=True, write_only=True)
+    anchor_date = serializers.DateField(write_only=True, required=False)
+    initial_expense = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = RecurringExpense
+        fields = [
+            "id",
+            "series_id",
+            "amount",
+            "description",
+            "category",
+            "currency",
+            "is_income",
+            "recurrence_rule",
+            "next_run_at",
+            "is_active",
+            "created_at",
+            "updated_at",
+            "list_id",
+            "anchor_date",
+            "initial_expense",
+        ]
+        read_only_fields = ["id", "series_id", "next_run_at", "initial_expense", "created_at", "updated_at"]
+
+    def validate(self, attrs):
+        if self.instance is None and not attrs.get("anchor_date"):
+            raise serializers.ValidationError({"anchor_date": "This field is required when creating a rule."})
+        return attrs
+
+    def get_initial_expense(self, obj: RecurringExpense):
+        first = Expense.objects.filter(recurring_expense=obj).order_by("date", "id").first()
+        if not first:
+            return None
+        return ExpenseSerializer(first, context=self.context).data
+
+    def validate_category(self, value):
+        user = self.context["request"].user
+        if value in BUILTIN_CATEGORY_VALUES:
+            return value
+        if isinstance(value, str) and value.startswith("custom_"):
+            suffix = value[7:]
+            if suffix.isdigit():
+                pk = int(suffix)
+                if UserCustomCategory.objects.filter(pk=pk, user=user).exists():
+                    return value
+        raise serializers.ValidationError("Invalid category.")
+
+    def _resolve_expense_list(self, user, list_id):
+        if list_id is None:
+            return ExpenseList.objects.filter(user=user, is_default=True).first()
+        try:
+            return ExpenseList.objects.get(pk=list_id, user=user)
+        except ExpenseList.DoesNotExist as exc:
+            raise serializers.ValidationError({"list_id": "Invalid list for this user."}) from exc
+
+    def create(self, validated_data):
+        list_id = validated_data.pop("list_id", None)
+        anchor = validated_data.pop("anchor_date")
+        user = self.context["request"].user
+        validated_data["user"] = user
+        validated_data["expense_list"] = self._resolve_expense_list(user, list_id)
+        validated_data["next_run_at"] = anchor
+        rule = RecurringExpense.objects.create(**validated_data)
+
+        today = timezone.now().date()
+        if anchor <= today:
+            Expense.objects.create(
+                user=user,
+                expense_list=rule.expense_list,
+                amount=rule.amount,
+                description=rule.description,
+                category=rule.category,
+                date=anchor,
+                currency=rule.currency,
+                is_income=rule.is_income,
+                recurring_expense=rule,
+            )
+            rule.next_run_at = compute_next_occurrence(anchor, rule.recurrence_rule)
+            rule.save(update_fields=["next_run_at", "updated_at"])
+        return rule
+
+    def to_representation(self, instance):
+        ret = super().to_representation(instance)
+        ret["list_id"] = instance.expense_list_id
+        return ret
 
 
 class ReportEmailSerializer(serializers.Serializer):

@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # Build context bazen monorepo kökü olabiliyor; harici scripts/ COPY güvenilir değil.
-# Entrypoint imaj içinde yazılır (sırlar yine runtime Variables).
+# Entrypoint: aynı konteynerde isteğe bağlı gömülü Celery (RUN_CELERY_IN_WEB=1).
 FROM python:3.12-slim-bookworm
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -16,25 +16,8 @@ RUN apt-get update \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-RUN python3 <<'PY'
-script = r'''#!/bin/sh
-set -e
-PORT="${PORT:-8000}"
-export PORT
-echo "[docker-entrypoint] listening on 0.0.0.0:${PORT}"
-exec gunicorn core.wsgi:application \
-  --bind "0.0.0.0:${PORT}" \
-  --workers "${WEB_CONCURRENCY:-1}" \
-  --threads 2 \
-  --timeout 120 \
-  --graceful-timeout 60 \
-  --access-logfile - \
-  --error-logfile -
-'''
-open("/docker-entrypoint.sh", "w").write(script)
-import os
-os.chmod("/docker-entrypoint.sh", 0o755)
-PY
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
 
 COPY . .
 

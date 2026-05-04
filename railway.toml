@@ -5,7 +5,9 @@ builder = "dockerfile"
 dockerfilePath = "Dockerfile"
 
 [deploy]
-# Başlatma: Dockerfile → ENTRYPOINT [/docker-entrypoint.sh]. Railway UI’da Custom Start Command BOŞ olsun (doluysa CMD’yi ezer).
+# Başlatma: Dockerfile → ENTRYPOINT. Gömülü Celery: Variables → RUN_CELERY_IN_WEB=1 + REDIS_URL (veya CELERY_BROKER_URL).
+# Ayrı Celery servisi gerekmez; worker + beat aynı konteynerde arka planda başlar.
+# Railway UI’da Custom Start Command BOŞ olsun (doluysa ENTRYPOINT’i ezer).
 # Railway şeması: dizide en fazla 1 eleman.
 preDeployCommand = ["sh -c \"python manage.py migrate --noinput\""]
 healthcheckPath = "/health"

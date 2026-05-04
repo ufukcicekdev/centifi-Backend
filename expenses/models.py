@@ -1,3 +1,5 @@
+import uuid
+
 from django.conf import settings
 from django.db import models
 
@@ -82,6 +84,13 @@ class Expense(models.Model):
     currency = models.CharField(max_length=5, default="USD")
     is_income = models.BooleanField(default=False)
     receipt_url = models.URLField(blank=True, default="")
+    recurring_expense = models.ForeignKey(
+        "expenses.RecurringExpense",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="generated_expenses",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -90,3 +99,46 @@ class Expense(models.Model):
 
     def __str__(self):
         return f"{self.user.username} - {self.description} ({self.amount})"
+
+
+class RecurringExpense(models.Model):
+    """Kullanıcı tanımlı tekrar; Celery/cron `process_due_recurring` ile Expense üretir."""
+
+    class Recurrence(models.TextChoices):
+        DAILY = "daily", "Daily"
+        WEEKLY = "weekly", "Weekly"
+        BIWEEKLY = "biweekly", "Biweekly"
+        MONTHLY = "monthly", "Monthly"
+        BIMONTHLY = "bimonthly", "Bimonthly"
+        QUARTERLY = "quarterly", "Quarterly"
+        YEARLY = "yearly", "Yearly"
+
+    series_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="recurring_expenses",
+    )
+    expense_list = models.ForeignKey(
+        ExpenseList,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="recurring_templates",
+    )
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    description = models.CharField(max_length=255)
+    category = models.CharField(max_length=48, default=Category.OTHER)
+    currency = models.CharField(max_length=5, default="USD")
+    is_income = models.BooleanField(default=False)
+    recurrence_rule = models.CharField(max_length=16, choices=Recurrence.choices)
+    next_run_at = models.DateField()
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.user_id} · {self.recurrence_rule} · {self.description[:40]}"
