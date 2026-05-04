@@ -56,3 +56,23 @@ class UserBankApp(models.Model):
 
     def __str__(self):
         return f"{self.user_id} · {self.name}"
+
+
+class PasswordResetOTP(models.Model):
+    """Single active row per user after forgot-password; deleted after reset or replacement."""
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="password_reset_otps",
+    )
+    code_hash = models.CharField(max_length=64)
+    attempts = models.PositiveSmallIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"PasswordResetOTP(user={self.user_id})"

@@ -185,18 +185,7 @@ EMAIL_USE_SSL = os.getenv("EMAIL_USE_SSL", "False") == "True"
 # Markalı e-postalar: site linki (footer). Logo ``core/email_assets/centifi-logo-email.png`` (inline CID).
 EMAIL_APP_URL = _strip_env(os.getenv("EMAIL_APP_URL")) or "https://centifi.app"
 
-# Şifre sıfırlama e-postası: kullanıcıya giden link tabanı (?uid=&token= eklenir).
-# - ``BACKEND_PUBLIC_URL`` (ör. Railway https://…): e-postada ``…/open/reset-password`` köprüsü kullanılır;
-#   sayfa tarayıcıda açılır ve ``centifi://reset-password`` ile uygulamaya yönlenir (Gmail vb. için gerekli).
-# - ``PASSWORD_RESET_PUBLIC_URL`` açıkça verilirse her şeyi geçersiz kılar (kendi HTTPS sayfanız vb.).
-BACKEND_PUBLIC_URL = _strip_env(os.getenv("BACKEND_PUBLIC_URL"))
-_explicit_pw_reset = _strip_env(os.getenv("PASSWORD_RESET_PUBLIC_URL"))
-if _explicit_pw_reset:
-    PASSWORD_RESET_PUBLIC_URL = _explicit_pw_reset
-elif BACKEND_PUBLIC_URL:
-    PASSWORD_RESET_PUBLIC_URL = f"{BACKEND_PUBLIC_URL.rstrip('/')}/open/reset-password"
-else:
-    PASSWORD_RESET_PUBLIC_URL = "centifi://reset-password"
+# Şifre sıfırlama: e-postada 6 haneli kod; uygulamada ``/(auth)/reset-password``. ``/open/reset-password/`` sadece eski bağlantılar için bilgi sayfası.
 
 if SMTP2GO_API_KEY and SMTP2GO_FROM_EMAIL:
     EMAIL_BACKEND = "core.mail_smtp2go.Smtp2goApiEmailBackend"
