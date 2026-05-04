@@ -60,13 +60,16 @@ def wrap_branded_email_html(
     header_subtitle: str = "",
     preheader: str = "",
     app_url: str | None = None,
+    html_lang: str = "en",
 ) -> str:
     """Wraps inner HTML in the table-based layout from ``email_templates/layout_base.html``."""
     title = document_title or "Centifi"
     pre = (preheader or "")[:220]
     site = (app_url or getattr(settings, "EMAIL_APP_URL", None) or "https://centifi.app").strip().rstrip("/")
+    lang = (html_lang or "en").strip().lower().split("-")[0] or "en"
 
     ctx = {
+        "html_lang": lang,
         "document_title": title,
         "header_subtitle": header_subtitle or "",
         "preheader": pre,

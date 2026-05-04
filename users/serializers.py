@@ -23,9 +23,13 @@ class ForgotPasswordSerializer(serializers.Serializer):
     email = serializers.EmailField()
 
 
-class ResetPasswordSerializer(serializers.Serializer):
+class VerifyPasswordResetCodeSerializer(serializers.Serializer):
     email = serializers.EmailField()
     code = serializers.RegexField(r"^\d{6}$")
+
+
+class ResetPasswordSerializer(serializers.Serializer):
+    reset_token = serializers.CharField()
     new_password = serializers.CharField(min_length=6, write_only=True)
 
 
@@ -104,6 +108,7 @@ class SocialAuthSerializer(serializers.Serializer):
     token = serializers.CharField()           # Google: id_token  |  Apple: identity_token
     name = serializers.CharField(required=False, default="")
     email = serializers.EmailField(required=False, default="")
+    language = serializers.CharField(required=False, default="", allow_blank=True, max_length=5)
 
 
 class UserBankAppSerializer(serializers.ModelSerializer):

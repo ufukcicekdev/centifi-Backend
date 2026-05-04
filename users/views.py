@@ -12,6 +12,7 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 from .models import User, UserBankApp
 from .play_store_lookup import fetch_play_store_meta, package_name_from_store_url
+from .password_email_copy import normalize_email_language
 from .serializers import RegisterSerializer, UserSerializer, SocialAuthSerializer, UserBankAppSerializer
 
 
@@ -106,6 +107,7 @@ class SocialAuthView(APIView):
         token = ser.validated_data["token"]
         name = ser.validated_data.get("name", "")
         email = ser.validated_data.get("email", "")
+        language_pref = (ser.validated_data.get("language") or "").strip()
 
         if provider == "google":
             payload = self._verify_google(token)
@@ -114,7 +116,7 @@ class SocialAuthView(APIView):
             social_id = payload.get("sub", "")
             email = email or payload.get("email", "")
             name = name or payload.get("name", "")
-            user = self._get_or_create(social_id, email, name, "google")
+            user = self._get_or_create(social_id, email, name, "google", language_pref=language_pref)
 
         elif provider == "apple":
             payload = self._verify_apple(token)
@@ -122,7 +124,7 @@ class SocialAuthView(APIView):
                 return Response({"detail": "Invalid Apple token."}, status=status.HTTP_401_UNAUTHORIZED)
             social_id = payload.get("sub", "")
             email = email or payload.get("email", "")
-            user = self._get_or_create(social_id, email, name, "apple")
+            user = self._get_or_create(social_id, email, name, "apple", language_pref=language_pref)
 
         else:
             return Response({"detail": "Unknown provider."}, status=status.HTTP_400_BAD_REQUEST)
@@ -168,7 +170,7 @@ class SocialAuthView(APIView):
 
     # ── shared ────────────────────────────────────────────────────────────────
 
-    def _get_or_create(self, social_id: str, email: str, name: str, provider: str) -> User:
+    def _get_or_create(self, social_id: str, email: str, name: str, provider: str, *, language_pref: str = "") -> User:
         id_field = f"{provider}_id"
         # Try to find existing user by social ID
         user = User.objects.filter(**{id_field: social_id}).first()
@@ -194,10 +196,12 @@ class SocialAuthView(APIView):
             first = parts[0]
             last = parts[1] if len(parts) > 1 else ""
 
+        lang = normalize_email_language(language_pref) if language_pref else "en"
         user = User.objects.create_user(
             username=username, email=email,
             first_name=first, last_name=last,
             password=None,
+            language=lang,
             **{id_field: social_id},
         )
         return user

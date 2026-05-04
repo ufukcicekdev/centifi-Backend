@@ -7,6 +7,7 @@ import secrets
 from datetime import timedelta
 
 from django.contrib.auth import password_validation
+from django.core.signing import BadSignature, SignatureExpired, TimestampSigner
 from django.utils import timezone
 from rest_framework import permissions, status
 from rest_framework.exceptions import ValidationError
@@ -16,13 +17,58 @@ from rest_framework.views import APIView
 from .models import PasswordResetOTP, User
 from .password_email import send_password_reset_otp_email
 from .password_otp import generate_reset_code, hash_reset_code
-from .serializers import ChangePasswordSerializer, ForgotPasswordSerializer, ResetPasswordSerializer
+from .serializers import (
+    ChangePasswordSerializer,
+    ForgotPasswordSerializer,
+    ResetPasswordSerializer,
+    VerifyPasswordResetCodeSerializer,
+)
 
 logger = logging.getLogger(__name__)
 
 _OTP_TTL = timedelta(minutes=15)
 _OTP_MAX_ATTEMPTS = 10
 _RESET_INVALID_MSG = "Invalid or expired code. Request a new code from Forgot password."
+_RESET_TOKEN_INVALID_MSG = "This reset session expired or is invalid. Verify your code again."
+_STEP2_SIGNER = TimestampSigner(salt="centifi.pwreset.step2")
+
+
+def _otp_for_user(user: User) -> PasswordResetOTP | None:
+    now = timezone.now()
+    return (
+        PasswordResetOTP.objects.filter(user=user, expires_at__gt=now)
+        .order_by("-created_at")
+        .first()
+    )
+
+
+def _verify_code_and_get_otp(user: User, code: str) -> PasswordResetOTP:
+    otp = _otp_for_user(user)
+    if not otp:
+        raise ValidationError({"detail": _RESET_INVALID_MSG})
+    expected = hash_reset_code(user.pk, code)
+    if not secrets.compare_digest(otp.code_hash, expected):
+        otp.attempts += 1
+        if otp.attempts >= _OTP_MAX_ATTEMPTS:
+            otp.delete()
+            raise ValidationError(
+                {"detail": "Too many incorrect attempts. Request a new code from Forgot password."}
+            )
+        otp.save(update_fields=["attempts"])
+        raise ValidationError({"detail": _RESET_INVALID_MSG})
+    return otp
+
+
+def _make_step2_token(user_id: int, otp_id: int) -> str:
+    return _STEP2_SIGNER.sign(f"{user_id}:{otp_id}")
+
+
+def _parse_step2_token(token: str) -> tuple[int, int]:
+    raw = _STEP2_SIGNER.unsign(token, max_age=int(_OTP_TTL.total_seconds()))
+    parts = raw.split(":", 1)
+    if len(parts) != 2:
+        raise BadSignature("bad payload")
+    return int(parts[0]), int(parts[1])
 
 
 class ForgotPasswordView(APIView):
@@ -54,38 +100,54 @@ class ForgotPasswordView(APIView):
         )
 
 
+class VerifyPasswordResetCodeView(APIView):
+    """POST { email, code } — checks code with server; returns reset_token for the final step (no password yet)."""
+
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        ser = VerifyPasswordResetCodeSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        email = ser.validated_data["email"]
+        code = ser.validated_data["code"]
+        user = User.objects.filter(email__iexact=email).first()
+        if not user:
+            raise ValidationError({"detail": _RESET_INVALID_MSG})
+        otp = _verify_code_and_get_otp(user, code)
+        reset_token = _make_step2_token(user.pk, otp.pk)
+        return Response(
+            {
+                "detail": "Code verified. You can now set a new password.",
+                "reset_token": reset_token,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
 class ResetPasswordView(APIView):
-    """POST { email, code, new_password } — set password when code is valid."""
+    """POST { reset_token, new_password } — completes reset after verify-code."""
 
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
         ser = ResetPasswordSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
-        email = ser.validated_data["email"]
-        code = ser.validated_data["code"]
+        reset_token = ser.validated_data["reset_token"]
         new_password = ser.validated_data["new_password"]
-        user = User.objects.filter(email__iexact=email).first()
+        try:
+            user_id, otp_id = _parse_step2_token(reset_token)
+        except SignatureExpired:
+            raise ValidationError({"detail": _RESET_TOKEN_INVALID_MSG}) from None
+        except (BadSignature, ValueError, TypeError):
+            raise ValidationError({"detail": _RESET_TOKEN_INVALID_MSG}) from None
+
+        user = User.objects.filter(pk=user_id).first()
         if not user:
-            raise ValidationError({"detail": _RESET_INVALID_MSG})
+            raise ValidationError({"detail": _RESET_TOKEN_INVALID_MSG})
         now = timezone.now()
-        otp = (
-            PasswordResetOTP.objects.filter(user=user, expires_at__gt=now)
-            .order_by("-created_at")
-            .first()
-        )
+        otp = PasswordResetOTP.objects.filter(pk=otp_id, user=user, expires_at__gt=now).first()
         if not otp:
-            raise ValidationError({"detail": _RESET_INVALID_MSG})
-        expected = hash_reset_code(user.pk, code)
-        if not secrets.compare_digest(otp.code_hash, expected):
-            otp.attempts += 1
-            if otp.attempts >= _OTP_MAX_ATTEMPTS:
-                otp.delete()
-                raise ValidationError(
-                    {"detail": "Too many incorrect attempts. Request a new code from Forgot password."}
-                )
-            otp.save(update_fields=["attempts"])
-            raise ValidationError({"detail": _RESET_INVALID_MSG})
+            raise ValidationError({"detail": _RESET_TOKEN_INVALID_MSG})
         try:
             password_validation.validate_password(new_password, user)
         except Exception as e:
