@@ -24,6 +24,7 @@ class ExpenseList(models.Model):
     )
     name = models.CharField(max_length=120)
     is_default = models.BooleanField(default=False)
+    emoji = models.CharField(max_length=32, blank=True, default="")
 
     class Meta:
         ordering = ["-is_default", "name"]

@@ -21,14 +21,18 @@ class UserCustomCategorySerializer(serializers.ModelSerializer):
 class ExpenseListSerializer(serializers.ModelSerializer):
     class Meta:
         model = ExpenseList
-        fields = ["id", "name", "is_default"]
+        fields = ["id", "name", "is_default", "emoji"]
         read_only_fields = ["id", "is_default"]
 
     def update(self, instance, validated_data):
-        if instance.is_default and "name" in validated_data:
-            raise serializers.ValidationError(
-                {"name": "Cannot rename the default list."},
-            )
+        if instance.is_default:
+            errs = {}
+            if "name" in validated_data:
+                errs["name"] = "Cannot rename the default list."
+            if "emoji" in validated_data:
+                errs["emoji"] = "Cannot change the default list icon."
+            if errs:
+                raise serializers.ValidationError(errs)
         return super().update(instance, validated_data)
 
 
