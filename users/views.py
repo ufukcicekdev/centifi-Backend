@@ -50,7 +50,7 @@ class EmailOrUsernameTokenObtainPairView(TokenObtainPairView):
     serializer_class = EmailOrUsernameTokenObtainPairSerializer
 
 
-class ProfileView(generics.RetrieveUpdateAPIView):
+class ProfileView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = UserSerializer
     permission_classes = [permissions.IsAuthenticated]
 
