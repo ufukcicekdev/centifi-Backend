@@ -76,3 +76,59 @@ class PasswordResetOTP(models.Model):
 
     def __str__(self):
         return f"PasswordResetOTP(user={self.user_id})"
+
+
+class SiteFeedback(models.Model):
+    """Public feedback submitted from centifi.app (and future clients)."""
+
+    class Category(models.TextChoices):
+        GENERAL = "general", "General"
+        BUG = "bug", "Bug report"
+        FEATURE = "feature", "Feature request"
+        BILLING = "billing", "Billing / subscription"
+        OTHER = "other", "Other"
+
+    name = models.CharField(max_length=120, blank=True, default="")
+    email = models.EmailField()
+    category = models.CharField(
+        max_length=20,
+        choices=Category.choices,
+        default=Category.GENERAL,
+    )
+    message = models.TextField()
+    language = models.CharField(max_length=5, blank=True, default="en")
+    source = models.CharField(max_length=40, default="website")
+    user_agent = models.CharField(max_length=500, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "site feedback"
+        verbose_name_plural = "site feedback"
+
+    def __str__(self):
+        label = (self.name or "").strip() or self.email
+        return f"{label} · {self.get_category_display()} · {self.created_at:%Y-%m-%d}"
+
+
+class TestUserApplication(models.Model):
+    """Beta / test user sign-ups from the marketing site."""
+
+    class Platform(models.TextChoices):
+        IOS = "ios", "iOS"
+        ANDROID = "android", "Android"
+
+    email = models.EmailField(unique=True)
+    platform = models.CharField(max_length=10, choices=Platform.choices)
+    language = models.CharField(max_length=5, blank=True, default="en")
+    source = models.CharField(max_length=40, default="website")
+    user_agent = models.CharField(max_length=500, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "test user application"
+        verbose_name_plural = "test user applications"
+
+    def __str__(self):
+        return f"{self.email} · {self.get_platform_display()} · {self.created_at:%Y-%m-%d}"

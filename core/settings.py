@@ -186,6 +186,14 @@ EMAIL_USE_SSL = os.getenv("EMAIL_USE_SSL", "False") == "True"
 # Markalı e-postalar: site linki (footer). Logo ``core/email_assets/centifi-logo-email.png`` (inline CID).
 EMAIL_APP_URL = _strip_env(os.getenv("EMAIL_APP_URL")) or "https://centifi.app"
 
+# Website feedback form → inbox (comma-separated for multiple recipients).
+FEEDBACK_TO_EMAIL = _strip_env(os.getenv("FEEDBACK_TO_EMAIL")) or "info@centifi.app"
+FEEDBACK_THROTTLE_RATE = _strip_env(os.getenv("FEEDBACK_THROTTLE_RATE")) or "10/hour"
+
+# Website test-user signup form
+TEST_USERS_TO_EMAIL = _strip_env(os.getenv("TEST_USERS_TO_EMAIL")) or FEEDBACK_TO_EMAIL
+TEST_USERS_THROTTLE_RATE = _strip_env(os.getenv("TEST_USERS_THROTTLE_RATE")) or "10/hour"
+
 # Şifre sıfırlama: e-postada 6 haneli kod; uygulamada ``/(auth)/reset-password``. ``/open/reset-password/`` sadece eski bağlantılar için bilgi sayfası.
 
 if SMTP2GO_API_KEY and SMTP2GO_FROM_EMAIL:

@@ -2,6 +2,8 @@ from django.contrib import admin
 from django.urls import path, include
 
 from core.views import app_password_reset_bridge, health
+from users.feedback_views import SubmitFeedbackView
+from users.test_user_views import SubmitTestUserView
 
 urlpatterns = [
     path("health", health),
@@ -15,4 +17,6 @@ urlpatterns = [
     path("api/expense-lists/", include("expenses.list_urls")),
     path("api/custom-categories/", include("expenses.category_urls")),
     path("api/ai/", include("ai.urls")),
+    path("api/feedback/", SubmitFeedbackView.as_view(), name="feedback_submit"),
+    path("api/test-users/", SubmitTestUserView.as_view(), name="test_users_submit"),
 ]
