@@ -23,6 +23,7 @@ if "*" not in ALLOWED_HOSTS:
 
 INSTALLED_APPS = [
     "storages",
+    "jazzmin",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -255,3 +256,81 @@ CELERY_BEAT_SCHEDULE = {
 CELERY_WORKER_PREFETCH_MULTIPLIER = int(os.getenv("CELERY_WORKER_PREFETCH_MULTIPLIER", "1"))
 CELERY_WORKER_CONCURRENCY = int(os.getenv("CELERY_WORKER_CONCURRENCY", "1"))
 CELERY_WORKER_MAX_TASKS_PER_CHILD = int(os.getenv("CELERY_WORKER_MAX_TASKS_PER_CHILD", "50"))
+
+# ── Django Jazzmin (admin UI) ─────────────────────────────────────────────────
+JAZZMIN_SETTINGS = {
+    "site_title": "Centifi Admin",
+    "site_header": "Centifi",
+    "site_brand": "Centifi",
+    "site_url": EMAIL_APP_URL,
+    "welcome_sign": "Centifi administration",
+    "copyright": "Centifi",
+    "search_model": ["users.User"],
+    "user_avatar": None,
+    "topmenu_links": [
+        {"name": "Website", "url": EMAIL_APP_URL, "new_window": True},
+        {"app": "users"},
+    ],
+    "usermenu_links": [
+        {"name": "Website", "url": EMAIL_APP_URL, "new_window": True},
+    ],
+    "show_sidebar": True,
+    "navigation_expanded": True,
+    "hide_apps": [],
+    "hide_models": [],
+    "order_with_respect_to": ["users", "expenses", "ai", "django_celery_beat"],
+    "icons": {
+        "auth": "fas fa-users-cog",
+        "auth.user": "fas fa-user",
+        "auth.group": "fas fa-users",
+        "users.user": "fas fa-user-circle",
+        "users.sitefeedback": "fas fa-comment-dots",
+        "users.testuserapplication": "fas fa-flask",
+        "users.userbankapp": "fas fa-university",
+        "users.passwordresetotp": "fas fa-key",
+        "expenses.expense": "fas fa-receipt",
+        "expenses.expenselist": "fas fa-list",
+        "expenses.usercustomcategory": "fas fa-tags",
+        "expenses.recurringexpense": "fas fa-redo",
+        "django_celery_beat": "fas fa-clock",
+    },
+    "default_icon_parents": "fas fa-chevron-circle-right",
+    "default_icon_children": "fas fa-circle",
+    "related_modal_active": True,
+    "changeform_format": "horizontal_tabs",
+    "changeform_format_overrides": {
+        "users.user": "collapsible",
+    },
+}
+
+JAZZMIN_UI_TWEAKS = {
+    "navbar_small_text": False,
+    "footer_small_text": True,
+    "body_small_text": False,
+    "brand_small_text": False,
+    "brand_colour": "navbar-primary",
+    "accent": "accent-primary",
+    "navbar": "navbar-dark navbar-primary",
+    "no_navbar_border": False,
+    "navbar_fixed": True,
+    "layout_boxed": False,
+    "footer_fixed": False,
+    "sidebar_fixed": True,
+    "sidebar": "sidebar-dark-primary",
+    "sidebar_nav_small_text": False,
+    "sidebar_disable_expand": False,
+    "sidebar_nav_child_indent": True,
+    "sidebar_nav_compact_style": False,
+    "sidebar_nav_legacy_style": False,
+    "sidebar_nav_flat_style": False,
+    "theme": "default",
+    "dark_mode_theme": None,
+    "button_classes": {
+        "primary": "btn-primary",
+        "secondary": "btn-secondary",
+        "info": "btn-info",
+        "warning": "btn-warning",
+        "danger": "btn-danger",
+        "success": "btn-success",
+    },
+}
