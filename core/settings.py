@@ -193,6 +193,9 @@ FEEDBACK_THROTTLE_RATE = _strip_env(os.getenv("FEEDBACK_THROTTLE_RATE")) or "10/
 # Website test-user signup form
 TEST_USERS_TO_EMAIL = _strip_env(os.getenv("TEST_USERS_TO_EMAIL")) or FEEDBACK_TO_EMAIL
 TEST_USERS_THROTTLE_RATE = _strip_env(os.getenv("TEST_USERS_THROTTLE_RATE")) or "10/hour"
+# Test-user invite emails (admin → Send invite email)
+TEST_USER_IOS_INVITE_URL = _strip_env(os.getenv("TEST_USER_IOS_INVITE_URL"))
+TEST_USER_ANDROID_INVITE_URL = _strip_env(os.getenv("TEST_USER_ANDROID_INVITE_URL"))
 
 # Şifre sıfırlama: e-postada 6 haneli kod; uygulamada ``/(auth)/reset-password``. ``/open/reset-password/`` sadece eski bağlantılar için bilgi sayfası.
 

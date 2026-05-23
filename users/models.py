@@ -118,11 +118,23 @@ class TestUserApplication(models.Model):
         IOS = "ios", "iOS"
         ANDROID = "android", "Android"
 
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        INVITED = "invited", "Invited"
+        REJECTED = "rejected", "Rejected"
+
     email = models.EmailField(unique=True)
     platform = models.CharField(max_length=10, choices=Platform.choices)
+    status = models.CharField(
+        max_length=10,
+        choices=Status.choices,
+        default=Status.PENDING,
+    )
     language = models.CharField(max_length=5, blank=True, default="en")
     source = models.CharField(max_length=40, default="website")
     user_agent = models.CharField(max_length=500, blank=True, default="")
+    admin_notes = models.TextField(blank=True, default="")
+    invited_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
