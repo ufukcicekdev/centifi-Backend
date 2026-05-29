@@ -6,6 +6,7 @@ from django.utils import timezone
 
 from expenses.models import Expense, ExpenseList, RecurringExpense
 from expenses.recurring_service import compute_next_occurrence, process_due_recurring
+from expenses.report_email_copy import category_label, display_list_name, report_email_context, type_label
 
 
 class RecurringServiceTests(TestCase):
@@ -35,3 +36,19 @@ class RecurringServiceTests(TestCase):
         stats = process_due_recurring()
         self.assertGreaterEqual(stats["expenses_created"], 1)
         self.assertTrue(Expense.objects.filter(recurring_expense=r).exists())
+
+
+class ReportEmailCopyTests(TestCase):
+    def test_turkish_copy(self):
+        ctx = report_email_context(
+            lang="tr",
+            start=date(2026, 5, 1),
+            end=date(2026, 5, 29),
+            list_label="Private list",
+            count=2,
+        )
+        self.assertIn("harcama raporu", ctx["subject"].lower())
+        self.assertEqual(ctx["col_date"], "Tarih")
+        self.assertEqual(category_label("tr", "food"), "Yemek & Restoran")
+        self.assertEqual(display_list_name("tr", "Private list"), "Özel liste")
+        self.assertEqual(type_label("tr", False), "Harcama")

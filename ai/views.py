@@ -28,6 +28,7 @@ EXPENSE_ITEM_SCHEMA = {
         },
         "date": {"type": "string"},
         "currency": {"type": "string"},
+        "is_income": {"type": "boolean"},
     },
     "required": ["amount", "description", "category", "date", "currency"],
 }
@@ -128,7 +129,16 @@ def _sanitize_expense_item(item: dict) -> dict:
     if not re.match(r"^\d{4}-\d{2}-\d{2}$", dt):
         dt = date.today().isoformat()
     cur = str(item.get("currency") or "USD").strip().upper()[:8] or "USD"
-    return {"amount": amount, "description": desc, "category": cat, "date": dt, "currency": cur}
+    raw_income = item.get("is_income")
+    is_income = raw_income is True
+    return {
+        "amount": amount,
+        "description": desc,
+        "category": cat,
+        "date": dt,
+        "currency": cur,
+        "is_income": is_income,
+    }
 
 
 def _merge_receipt_lines_by_category(items: list[dict]) -> list[dict]:
@@ -142,7 +152,7 @@ def _merge_receipt_lines_by_category(items: list[dict]) -> list[dict]:
     # (category, date, currency) -> list of items
     buckets: dict[tuple[str, str, str], list[dict]] = {}
     for it in items:
-        key = (it["category"], it["date"], it["currency"])
+        key = (it["category"], it["date"], it["currency"], bool(it.get("is_income")))
         buckets.setdefault(key, []).append(it)
 
     merged: list[dict] = []
@@ -164,7 +174,7 @@ def _merge_receipt_lines_by_category(items: list[dict]) -> list[dict]:
         else:
             head = " · ".join(parts[:3])
             desc = f"{head} (+{len(parts) - 3} kalem)"[:500]
-        cat, dt, cur = key
+        cat, dt, cur, is_income = key
         merged.append(
             {
                 "amount": total,
@@ -172,6 +182,7 @@ def _merge_receipt_lines_by_category(items: list[dict]) -> list[dict]:
                 "category": cat,
                 "date": dt,
                 "currency": cur,
+                "is_income": is_income,
             }
         )
 
@@ -307,6 +318,8 @@ def _gemini_parse_text_raw(text: str, language: str = "en"):
         "If the user mentions MULTIPLE distinct expenses in one message "
         "(e.g. food 10 TL and cinema 20 TL), put each in the \"expenses\" array as a separate object. "
         "If there is only one expense, still use \"expenses\" with exactly one element.\n"
+        "Set is_income true when the user describes money received (salary, payment, refund, maaş, gelir, kazanç, ödeme aldım). "
+        "Otherwise is_income false for spending.\n"
         "Return ONLY valid JSON matching this schema.\n"
         f"Schema: {json.dumps(EXPENSE_BATCH_SCHEMA)}"
     )
@@ -336,7 +349,8 @@ def _gemini_parse_media(data_b64: str, mime_type: str, prompt_text: str, client=
             f"{prompt_text} "
             "Return ONLY valid JSON matching this schema. "
             "If there are MULTIPLE distinct expenses or line items, include each as a separate element in \"expenses\". "
-            "If only one total applies, use \"expenses\" with one element.\n"
+            "If only one total applies, use \"expenses\" with one element. "
+            "Set is_income true for income/refunds/salary (maaş, gelir, payment received); false for spending.\n"
             "For date use YYYY-MM-DD format. "
             "For currency detect from content or default to USD.\n"
             f"Schema: {json.dumps(EXPENSE_BATCH_SCHEMA)}"
@@ -428,18 +442,20 @@ class ParseAudioView(APIView):
 
         prompt = (
             f"The user is speaking in {lang_name}. "
-            "They are describing personal expense(s) verbally (e.g. '15 tl yemek' means 15 TRY food expense). "
-            "If they mention MULTIPLE expenses in one recording (e.g. food 10 TL and cinema 20 TL), "
-            "put each in the \"expenses\" array as a separate object. "
-            "Transcribe their speech and extract fields for each expense. "
+            "They are describing personal expense(s) or income verbally (e.g. '15 tl yemek' = 15 TRY food expense; "
+            "'5000 tl maaş' = 5000 TRY salary income with is_income true). "
+            "If they mention MULTIPLE items in one recording, put each in the \"expenses\" array. "
+            "Transcribe their speech and extract fields for each item. "
+            "Set is_income true for salary, payments received, refunds (maaş, gelir, kazanç, ödeme aldım). "
             "Detect the currency from context (₺/TL → TRY, $ → USD, € → EUR, £ → GBP). "
             "If no currency mentioned, use the user's likely local currency based on language. "
         )
         gemini_client = _get_gemini_client()
         if not gemini_client:
+            logger.warning("parse-audio: Gemini client unavailable (GEMINI_API_KEY or google-genai)")
             return Response(
                 {
-                    "detail": "Gemini kullanılamıyor (/sunucuda GEMINI_API_KEY boş veya google-genai paketi hatalı).",
+                    "detail": "AI service is temporarily unavailable.",
                     "code": "GEMINI_CLIENT_UNAVAILABLE",
                 },
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -447,13 +463,13 @@ class ParseAudioView(APIView):
 
         parsed_any = _gemini_parse_media(audio_b64, mime_type, prompt, client=gemini_client)
         if parsed_any is None:
+            logger.warning(
+                "parse-audio: Gemini returned empty or invalid JSON (model=%s)",
+                _gemini_model_id(),
+            )
             return Response(
                 {
-                    "detail": (
-                        "Ses Gemini tarafından JSON’a çevrilemedi veya boş yanıt geldi. "
-                        "Railway’de GEMINI_MODEL deneyin: gemini-2.5-flash veya gemini-2.5-flash-lite-latest; "
-                        "deploy loglarına bakın (ai.views)."
-                    ),
+                    "detail": "Could not analyze the voice recording.",
                     "code": "GEMINI_AUDIO_PARSE_FAILED",
                 },
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -645,16 +661,18 @@ class SpendingInsightsView(APIView):
         if insight is None:
             client = _get_gemini_client()
             if not client:
+                logger.warning("spending-insights: Gemini client unavailable")
                 return Response(
                     {
-                        "detail": "AI is not configured (GEMINI_API_KEY missing or client init failed).",
+                        "detail": "AI service is temporarily unavailable.",
                         "code": "GEMINI_CLIENT_UNAVAILABLE",
                     },
                     status=status.HTTP_503_SERVICE_UNAVAILABLE,
                 )
+            logger.warning("spending-insights: Gemini returned no insight")
             return Response(
                 {
-                    "detail": "Could not generate insights. Try again later.",
+                    "detail": "Could not generate insights.",
                     "code": "GEMINI_INSIGHTS_FAILED",
                 },
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,

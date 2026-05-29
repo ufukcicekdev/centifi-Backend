@@ -48,7 +48,7 @@
           <tr>
             <td style="padding:20px 28px;background-color:#f8fafc;border-top:1px solid #e5e7eb;">
               <p style="margin:0;font-family:Segoe UI,system-ui,-apple-system,BlinkMacSystemFont,Roboto,Helvetica,Arial,sans-serif;font-size:12px;color:#9ca3af;line-height:1.55;">
-                Sent by <strong style="color:#6b7280;">Centifi</strong> · smart expense tracking<br />
+                {{ footer_sent_by|default:"Sent by"|escape }} <strong style="color:#6b7280;">Centifi</strong> · {{ footer_tagline|default:"smart expense tracking"|escape }}<br />
                 <a href="{{ site_href|escape }}" style="color:#6C63FF;text-decoration:none;font-weight:600;">{{ site_label|escape }}</a>
               </p>
             </td>

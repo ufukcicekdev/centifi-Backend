@@ -109,12 +109,20 @@ class ExpenseViewSet(viewsets.ModelViewSet):
         start = ser.validated_data["start_date"]
         end = ser.validated_data["end_date"]
         list_id = ser.validated_data.get("list_id")
+        from core.request_language import resolve_email_language
+
+        language = resolve_email_language(
+            request=request,
+            body_language=ser.validated_data.get("language") or "",
+            user=request.user,
+        )
         try:
             result = send_expense_report_email(
                 user=request.user,
                 start=start,
                 end=end,
                 list_id=list_id,
+                language=language,
             )
         except ValueError as e:
             return Response(

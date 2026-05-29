@@ -61,6 +61,8 @@ def wrap_branded_email_html(
     preheader: str = "",
     app_url: str | None = None,
     html_lang: str = "en",
+    footer_sent_by: str = "",
+    footer_tagline: str = "",
 ) -> str:
     """Wraps inner HTML in the table-based layout from ``email_templates/layout_base.html``."""
     title = document_title or "Centifi"
@@ -75,6 +77,8 @@ def wrap_branded_email_html(
         "preheader": pre,
         "site_href": site,
         "site_label": site,
+        "footer_sent_by": (footer_sent_by or "").strip() or "Sent by",
+        "footer_tagline": (footer_tagline or "").strip() or "smart expense tracking",
         "inner_html": inner_html,
         **_logo_block_context(48),
     }

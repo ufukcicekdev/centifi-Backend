@@ -209,6 +209,15 @@ class ReportEmailSerializer(serializers.Serializer):
     start_date = serializers.DateField()
     end_date = serializers.DateField()
     list_id = serializers.IntegerField(required=False, allow_null=True)
+    language = serializers.CharField(required=False, allow_blank=True, max_length=5)
+
+    def validate_language(self, value: str) -> str:
+        from users.password_email_copy import normalize_email_language
+
+        raw = (value or "").strip()
+        if not raw:
+            return ""
+        return normalize_email_language(raw)
 
     def validate(self, attrs):
         start = attrs["start_date"]
