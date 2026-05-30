@@ -115,10 +115,37 @@ class UserSerializer(serializers.ModelSerializer):
 
 class SocialAuthSerializer(serializers.Serializer):
     provider = serializers.ChoiceField(choices=["google", "apple"])
-    token = serializers.CharField()           # Google: id_token  |  Apple: identity_token
-    name = serializers.CharField(required=False, default="")
-    email = serializers.EmailField(required=False, default="")
-    language = serializers.CharField(required=False, default="", allow_blank=True, max_length=5)
+    token = serializers.CharField(trim_whitespace=True)
+    name = serializers.CharField(required=False, allow_blank=True, allow_null=True, default="")
+    email = serializers.CharField(required=False, allow_blank=True, allow_null=True, default="")
+    language = serializers.CharField(required=False, allow_blank=True, allow_null=True, default="", max_length=5)
+
+    def validate_token(self, value: str) -> str:
+        token = (value or "").strip()
+        if not token:
+            raise serializers.ValidationError("Token is required.")
+        return token
+
+    def validate_email(self, value: str | None) -> str:
+        from django.core.exceptions import ValidationError as DjangoValidationError
+        from django.core.validators import validate_email as django_validate_email
+
+        raw = (value or "").strip()
+        if not raw:
+            return ""
+        try:
+            django_validate_email(raw)
+        except DjangoValidationError:
+            return ""
+        return raw
+
+    def validate_language(self, value: str | None) -> str:
+        from users.password_email_copy import normalize_email_language
+
+        raw = (value or "").strip()
+        if not raw:
+            return ""
+        return normalize_email_language(raw)
 
 
 class UserBankAppSerializer(serializers.ModelSerializer):

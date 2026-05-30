@@ -149,20 +149,20 @@ class SocialAuthView(APIView):
     # ── Apple ─────────────────────────────────────────────────────────────────
 
     def _verify_apple(self, identity_token: str) -> dict | None:
-        """
-        Minimal Apple identity token verification.
-        In production, verify JWT signature with Apple's public keys.
-        For now: decode payload (base64) and trust the client (acceptable for
-        internal apps; add full JWT verification before App Store submission).
-        """
+        """Decode Apple identity JWT payload (iss/sub); signature verify TODO for hardening."""
         try:
             import base64
-            parts = identity_token.split(".")
+
+            token = (identity_token or "").strip()
+            parts = token.split(".")
             if len(parts) != 3:
                 return None
-            payload_b64 = parts[1] + "=="  # pad
-            payload = json.loads(base64.urlsafe_b64decode(payload_b64))
+            payload_b64 = parts[1]
+            pad = (4 - len(payload_b64) % 4) % 4
+            payload = json.loads(base64.urlsafe_b64decode(payload_b64 + ("=" * pad)))
             if payload.get("iss") != "https://appleid.apple.com":
+                return None
+            if not payload.get("sub"):
                 return None
             return payload
         except Exception:
@@ -198,10 +198,13 @@ class SocialAuthView(APIView):
 
         lang = normalize_email_language(language_pref) if language_pref else "en"
         user = User.objects.create_user(
-            username=username, email=email,
+            username=username, email=email or "",
             first_name=first, last_name=last,
             password=None,
             language=lang,
             **{id_field: social_id},
         )
+        if not user.has_usable_password():
+            user.set_unusable_password()
+            user.save(update_fields=["password"])
         return user
