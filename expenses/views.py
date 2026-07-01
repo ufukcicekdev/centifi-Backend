@@ -75,7 +75,7 @@ class ExpenseViewSet(viewsets.ModelViewSet):
             user=request.user,
             date__year=now.year,
             date__month=now.month,
-        )
+        ).select_related("expense_list", "recurring_expense")
 
         total_spent = monthly_qs.aggregate(t=Sum("amount"))["t"] or 0
         monthly_budget = request.user.monthly_budget

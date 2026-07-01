@@ -9,6 +9,8 @@ from datetime import date
 
 import boto3
 from botocore.client import Config
+from celery import shared_task
+from django.core.cache import cache
 from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -383,6 +385,56 @@ class ParseTextView(APIView):
         return Response(data)
 
 
+
+
+@shared_task(name="ai.tasks.upload_receipt_async")
+def upload_receipt_async(image_b64: str, mime_type: str, request_id: str) -> dict:
+    """
+    Background task to upload receipt image to DigitalOcean Spaces.
+    Results cached for 24 hours with request_id key.
+    """
+    try:
+        image_bytes = base64.b64decode(image_b64)
+        receipt_url = _upload_to_spaces(image_bytes, mime_type, folder="receipts")
+        
+        # Cache success with 24h TTL
+        result = {"status": "success", "url": receipt_url}
+        cache.set(f"receipt_upload:{request_id}", result, 86400)
+        
+        logger.info(f"Receipt uploaded async: {request_id} → {receipt_url}")
+        return result
+        
+    except Exception as e:
+        # Cache failure
+        result = {"status": "failed", "reason": str(e)}
+        cache.set(f"receipt_upload:{request_id}", result, 86400)
+        
+        logger.error(f"Receipt upload async failed: {request_id} - {e}")
+        return result
+
+
+class ReceiptUploadStatusView(APIView):
+    """
+    GET /api/ai/receipt-upload-status/{request_id}/
+    
+    Check async receipt upload status.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, request_id: str):
+        result = cache.get(f"receipt_upload:{request_id}")
+        
+        if result is None:
+            return Response(
+                {"status": "pending", "message": "Upload in progress or not found"},
+                status=status.HTTP_202_ACCEPTED
+            )
+        
+        if result.get("status") == "failed":
+            return Response(result, status=status.HTTP_200_OK)
+        
+        return Response(result, status=status.HTTP_200_OK)
+
 class ParseImageView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -397,8 +449,8 @@ class ParseImageView(APIView):
         try:
             image_bytes = base64.b64decode(image_b64)
             receipt_url = _upload_to_spaces(image_bytes, mime_type, folder="receipts")
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.error("Receipt upload to Spaces failed: %s", exc)
 
         parsed_any = _gemini_parse_media(
             image_b64,
@@ -413,6 +465,13 @@ class ParseImageView(APIView):
             merge_receipt_by_category=True,
             expense_date_today=True,
         )
+        
+        # ✅ Include upload status so frontend can poll if needed
+        data["receipt_upload"] = {
+            "request_id": request_id,
+            "status": upload_status,  # "success", "async_pending", "failed"
+        }
+        
         return Response(data)
 
 

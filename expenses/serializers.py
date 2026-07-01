@@ -37,6 +37,9 @@ class ExpenseListSerializer(serializers.ModelSerializer):
 
 
 class ExpenseSerializer(serializers.ModelSerializer):
+    """
+    OPTIMIZED: Caches user's custom categories on init to prevent N+1 queries
+    """
     list_id = serializers.IntegerField(required=False, allow_null=True, write_only=True)
 
     class Meta:
@@ -56,15 +59,32 @@ class ExpenseSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["id", "created_at", "updated_at"]
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # ✅ FIX_02: Cache user's custom categories on serializer init
+        # This prevents N+1 queries when validating multiple expenses
+        request = self.context.get("request")
+        if request and hasattr(request, "user"):
+            # Fetch all custom category IDs once per request
+            self._user_custom_category_ids = set(
+                UserCustomCategory.objects.filter(user=request.user).values_list("pk", flat=True)
+            )
+        else:
+            self._user_custom_category_ids = set()
+
     def validate_category(self, value):
-        user = self.context["request"].user
+        """
+        Validate category is either builtin or user's custom category.
+        Uses in-memory check (no DB hit) thanks to cached IDs.
+        """
         if value in BUILTIN_CATEGORY_VALUES:
             return value
         if isinstance(value, str) and value.startswith("custom_"):
             suffix = value[7:]
             if suffix.isdigit():
                 pk = int(suffix)
-                if UserCustomCategory.objects.filter(pk=pk, user=user).exists():
+                # ✅ IN-MEMORY CHECK (from cache, no DB query)
+                if pk in self._user_custom_category_ids:
                     return value
         raise serializers.ValidationError("Invalid category.")
 
