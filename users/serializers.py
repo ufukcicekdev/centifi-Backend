@@ -89,8 +89,9 @@ class UserSerializer(serializers.ModelSerializer):
             "alert_email", "onboarding_completed",
             "category_budgets", "budget_alerts_enabled", "budget_alert_threshold_percent",
             "pro_entitlement_expires_at", "is_pro", "has_password",
+            "trial_started_at",
         ]
-        read_only_fields = ["id", "pro_entitlement_expires_at", "is_pro", "has_password"]
+        read_only_fields = ["id", "pro_entitlement_expires_at", "is_pro", "has_password", "trial_started_at"]
 
     def update(self, instance, validated_data):
         email = validated_data.get("email")

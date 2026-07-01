@@ -57,6 +57,16 @@ class ProfileView(generics.RetrieveUpdateDestroyAPIView):
     def get_object(self):
         return self.request.user
 
+    def perform_update(self, serializer):
+        user = self.request.user
+        data = self.request.data
+        # Set trial_started_at once when onboarding completes for the first time.
+        if data.get("onboarding_completed") and not user.onboarding_completed and not user.trial_started_at:
+            from django.utils import timezone
+            serializer.save(trial_started_at=timezone.now())
+        else:
+            serializer.save()
+
 
 class UserBankAppViewSet(viewsets.ModelViewSet):
     serializer_class = UserBankAppSerializer

@@ -21,6 +21,8 @@ class User(AbstractUser):
     apple_id = models.CharField(max_length=255, blank=True, default="")
     # RevenueCat / mağaza aboneliği — ``pro`` entitlement bitişi (webhook veya /subscription/sync/)
     pro_entitlement_expires_at = models.DateTimeField(null=True, blank=True)
+    # In-app grace period — set once when onboarding completes; never overwritten.
+    trial_started_at = models.DateTimeField(null=True, blank=True)
 
     def __str__(self):
         return self.username
