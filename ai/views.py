@@ -466,12 +466,6 @@ class ParseImageView(APIView):
             expense_date_today=True,
         )
         
-        # ✅ Include upload status so frontend can poll if needed
-        data["receipt_upload"] = {
-            "request_id": request_id,
-            "status": upload_status,  # "success", "async_pending", "failed"
-        }
-        
         return Response(data)
 
 
