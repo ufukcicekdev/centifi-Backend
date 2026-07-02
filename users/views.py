@@ -55,7 +55,13 @@ class ProfileView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_object(self):
-        return self.request.user
+        user = self.request.user
+        # Backfill: existing users who completed onboarding but never got trial_started_at.
+        if user.onboarding_completed and not user.trial_started_at:
+            from django.utils import timezone
+            user.trial_started_at = timezone.now()
+            user.save(update_fields=["trial_started_at"])
+        return user
 
     def perform_update(self, serializer):
         user = self.request.user
