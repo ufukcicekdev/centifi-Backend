@@ -14,6 +14,16 @@ class RegisterSerializer(serializers.ModelSerializer):
         model = User
         fields = ["id", "username", "email", "password", "monthly_budget", "language", "is_dark_mode"]
 
+    def validate_email(self, value):
+        if not value:
+            return value
+        email = value.strip().lower()
+        if User.objects.filter(email__iexact=email, deleted_at__isnull=False).exists():
+            raise serializers.ValidationError(
+                "This email belongs to a deleted account and cannot be reused."
+            )
+        return email
+
     def create(self, validated_data):
         password = validated_data.pop("password")
         user = User(**validated_data)

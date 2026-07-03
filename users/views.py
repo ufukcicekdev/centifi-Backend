@@ -43,7 +43,22 @@ class EmailOrUsernameTokenObtainPairSerializer(TokenObtainPairSerializer):
             except User.DoesNotExist:
                 raise serializers.ValidationError({"email": "No user found with this email."})
             attrs[self.username_field] = username
+
+        # Reactivate soft-deleted accounts before simplejwt's authenticate() runs,
+        # which would reject is_active=False users. trial_started_at is preserved
+        # so the user cannot gain a fresh free trial by deleting and re-logging in.
+        self._maybe_reactivate(attrs.get(self.username_field, ""))
         return super().validate(attrs)
+
+    def _maybe_reactivate(self, username: str) -> None:
+        if not username:
+            return
+        from django.utils import timezone
+        User.objects.filter(
+            username__iexact=username,
+            is_active=False,
+            deleted_at__isnull=False,
+        ).update(is_active=True, deleted_at=None)
 
 
 class EmailOrUsernameTokenObtainPairView(TokenObtainPairView):
@@ -72,6 +87,14 @@ class ProfileView(generics.RetrieveUpdateDestroyAPIView):
             serializer.save(trial_started_at=timezone.now())
         else:
             serializer.save()
+
+    def perform_destroy(self, instance):
+        from django.utils import timezone
+        # Soft-delete: deactivate the account without removing the row.
+        # The email and social IDs remain occupied, preventing re-registration for a fresh free trial.
+        instance.is_active = False
+        instance.deleted_at = timezone.now()
+        instance.save(update_fields=["is_active", "deleted_at"])
 
 
 class UserBankAppViewSet(viewsets.ModelViewSet):
@@ -193,9 +216,18 @@ class SocialAuthView(APIView):
         if not user and email:
             user = User.objects.filter(email__iexact=email).first()
         if user:
+            # Reactivate soft-deleted account; trial_started_at is preserved so no fresh trial.
+            update_fields = []
+            if user.deleted_at is not None:
+                from django.utils import timezone
+                user.is_active = True
+                user.deleted_at = None
+                update_fields += ["is_active", "deleted_at"]
             if not getattr(user, id_field):
                 setattr(user, id_field, social_id)
-                user.save(update_fields=[id_field])
+                update_fields.append(id_field)
+            if update_fields:
+                user.save(update_fields=update_fields)
             return user
 
         # Create new user

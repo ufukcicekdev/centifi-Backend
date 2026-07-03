@@ -23,6 +23,9 @@ class User(AbstractUser):
     pro_entitlement_expires_at = models.DateTimeField(null=True, blank=True)
     # In-app grace period — set once when onboarding completes; never overwritten.
     trial_started_at = models.DateTimeField(null=True, blank=True)
+    # Soft-delete: set on account deletion instead of removing the row.
+    # Keeps email/social-ID occupied so deleted users can't re-register for a fresh trial.
+    deleted_at = models.DateTimeField(null=True, blank=True)
 
     def __str__(self):
         return self.username
