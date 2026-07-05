@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import ParseAudioView, ParseImageView, ParseTextView, SpendingInsightsView, ReceiptUploadStatusView
+from .views import ParseAudioView, ParseImageView, ParseTextView, SpendingInsightsView, ReceiptUploadStatusView, ProactiveCoachView
 
 urlpatterns = [
     path("parse-text/", ParseTextView.as_view(), name="parse_text"),
@@ -7,5 +7,6 @@ urlpatterns = [
     path("parse-audio/", ParseAudioView.as_view(), name="parse_audio"),
     path("spending-insights/", SpendingInsightsView.as_view(), name="spending_insights"),
     path("receipt-upload-status/<str:request_id>/", ReceiptUploadStatusView.as_view(), name="receipt_upload_status"),
+    path("proactive-coach/", ProactiveCoachView.as_view(), name="proactive_coach"),
 ]
 

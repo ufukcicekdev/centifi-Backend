@@ -650,6 +650,115 @@ def _gemini_spending_insight(summary_json: str, language: str) -> str | None:
         return None
 
 
+class ProactiveCoachView(APIView):
+    """Son 14 günün harcamalarını Gemini ile analiz edip proaktif koç mesajı üretir."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        from expenses.models import Expense
+        from django.db.models import Sum
+        from datetime import timedelta, date as date_cls
+
+        language = (request.data.get("language") or "en")[:5]
+        today = date_cls.today()
+        this_week_start = today - timedelta(days=7)
+        last_week_start = today - timedelta(days=14)
+
+        qs_base = Expense.objects.filter(user=request.user, is_income=False)
+
+        # Son 14 günlük harcamalar
+        qs_14 = qs_base.filter(date__gte=last_week_start, date__lte=today)
+        count_14 = qs_14.count()
+
+        if count_14 == 0:
+            return Response(
+                {"detail": "Not enough data.", "code": "NO_DATA"},
+                status=status.HTTP_204_NO_CONTENT,
+            )
+
+        # Bu hafta / geçen hafta toplamları (currency agnostic — birincil para birimi)
+        this_week_rows = qs_base.filter(date__gte=this_week_start, date__lte=today)
+        last_week_rows = qs_base.filter(date__gte=last_week_start, date__lt=this_week_start)
+
+        def week_summary(qs):
+            by_cat = []
+            for row in qs.values("currency", "category").annotate(total=Sum("amount")):
+                by_cat.append({
+                    "currency": row["currency"],
+                    "category": row["category"],
+                    "total": float(row["total"]),
+                })
+            return by_cat
+
+        # Örnek harcamalar (son 30 kayıt)
+        samples = []
+        for row in qs_14.order_by("-date", "-id").values(
+            "date", "amount", "currency", "category", "description"
+        )[:30]:
+            samples.append({
+                "date": row["date"].isoformat(),
+                "amount": float(row["amount"]),
+                "currency": row["currency"],
+                "category": row["category"],
+                "description": (row["description"] or "")[:80],
+            })
+
+        summary = {
+            "today": today.isoformat(),
+            "this_week": week_summary(this_week_rows),
+            "last_week": week_summary(last_week_rows),
+            "recent_14_days_sample": samples,
+        }
+
+        lang_name = LANGUAGE_NAMES.get(language, "English")
+        summary_json = json.dumps(summary, ensure_ascii=False)
+
+        client = _get_gemini_client()
+        if not client:
+            return Response(
+                {"detail": "AI service is temporarily unavailable.", "code": "GEMINI_CLIENT_UNAVAILABLE"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        prompt = (
+            "You are a proactive personal finance coach. You receive JSON with the user's spending "
+            "for the last 14 days split into this_week vs last_week.\n"
+            f"{summary_json}\n\n"
+            f"Write a SHORT proactive message in {lang_name} ONLY.\n"
+            "Rules:\n"
+            "- Maximum 2 sentences. Be direct and concrete — use actual numbers from the data.\n"
+            "- If this week > last week by 25%+: warn the user about the increase.\n"
+            "- If this week < last week by 20%+: congratulate them.\n"
+            "- Otherwise: give a projection or a pattern observation (e.g. a category that dominates).\n"
+            "- Never say 'I' or 'As your coach'. Start directly with the observation.\n"
+            "- Do NOT use markdown. Plain text only.\n"
+            'Return JSON: {"text": "...", "type": "warning"|"info"|"positive"}'
+        )
+
+        try:
+            resp = client.models.generate_content(model=_gemini_model_id(), contents=prompt)
+            raw = _extract_generate_content_text(resp)
+            raw = raw.strip()
+            raw = re.sub(r"^```(?:json)?\s*", "", raw)
+            raw = re.sub(r"\s*```$", "", raw)
+            parsed = json.loads(raw)
+            text = str(parsed.get("text") or "").strip()
+            msg_type = str(parsed.get("type") or "info")
+            if msg_type not in ("warning", "info", "positive"):
+                msg_type = "info"
+            if not text:
+                raise ValueError("empty text")
+        except Exception:
+            logger.exception("proactive-coach: Gemini parse failed")
+            return Response(
+                {"detail": "Could not generate coach message.", "code": "GEMINI_COACH_FAILED"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        return Response({"text": text, "type": msg_type})
+
+
 class SpendingInsightsView(APIView):
     """Seçilen dönem + listedeki harcamaları Gemini ile özet tavsiyeye çevirir."""
 
