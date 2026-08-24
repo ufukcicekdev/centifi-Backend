@@ -213,12 +213,13 @@ else:
 # ── AI ────────────────────────────────────────────────────────────────────────
 GEMINI_API_KEY = (os.getenv("GEMINI_API_KEY") or "").strip()
 
-# ── DigitalOcean Spaces (S3-compatible) ───────────────────────────────────────
+# ── Railway Bucket (S3-compatible) ────────────────────────────────────────────
 AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID", "")
 AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY", "")
 AWS_STORAGE_BUCKET_NAME = os.getenv("AWS_STORAGE_BUCKET_NAME", "")
-AWS_S3_REGION_NAME = os.getenv("AWS_S3_REGION_NAME", "fra1")
+AWS_S3_REGION_NAME = os.getenv("AWS_S3_REGION_NAME", "auto")
 AWS_S3_ENDPOINT_URL = os.getenv("AWS_S3_ENDPOINT_URL", "")
+AWS_S3_CUSTOM_DOMAIN = os.getenv("AWS_S3_CUSTOM_DOMAIN", "") or None
 AWS_S3_OBJECT_PARAMETERS = {"CacheControl": "max-age=86400"}
 AWS_DEFAULT_ACL = "public-read"
 AWS_QUERYSTRING_AUTH = False

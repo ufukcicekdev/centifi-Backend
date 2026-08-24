@@ -278,12 +278,13 @@ def _fallback_parse(text: str) -> dict:
 
 
 def _upload_to_spaces(data: bytes, mime_type: str, folder: str = "receipts") -> str | None:
-    """Upload raw bytes to DigitalOcean Spaces and return the public URL."""
+    """Upload raw bytes to the S3-compatible bucket (Railway) and return the public URL."""
     key_id = os.getenv("AWS_ACCESS_KEY_ID")
     secret = os.getenv("AWS_SECRET_ACCESS_KEY")
     bucket = os.getenv("AWS_STORAGE_BUCKET_NAME")
-    region = os.getenv("AWS_S3_REGION_NAME")
+    region = os.getenv("AWS_S3_REGION_NAME") or "auto"
     endpoint = os.getenv("AWS_S3_ENDPOINT_URL")
+    custom_domain = os.getenv("AWS_S3_CUSTOM_DOMAIN")
     if not all([key_id, secret, bucket, endpoint]):
         return None
     try:
@@ -304,6 +305,8 @@ def _upload_to_spaces(data: bytes, mime_type: str, folder: str = "receipts") -> 
             ContentType=mime_type,
             ACL="public-read",
         )
+        if custom_domain:
+            return f"https://{custom_domain.rstrip('/')}/{key}"
         return f"{endpoint}/{bucket}/{key}"
     except Exception:
         return None
